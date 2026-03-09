@@ -31,6 +31,7 @@ interface Product {
 interface InventoryRecord {
     FechaHora: string;
     Lote: string;
+    Proveedor: string;
     Tipo: string;
     UPC: string;
     Nombre: string;
@@ -90,6 +91,8 @@ export default function InventoryScannerApp() {
 
     // Control Inputs (Escaneo Individual)
     const [batchName, setBatchName] = useState("");
+    const [proveedor, setProveedor] = useState("");
+    const [listaProveedores, setListaProveedores] = useState<string[]>([]);
     const [upc, setUpc] = useState("");
     const [serial, setSerial] = useState("");
     const [qty, setQty] = useState("");
@@ -168,6 +171,17 @@ export default function InventoryScannerApp() {
                 console.error("Error cargando el historial de sesiones", e);
             }
         }
+
+        // Cargar Historial de Proveedores
+        const savedProviders = localStorage.getItem('scanner_proveedores');
+        if (savedProviders) {
+            try {
+                const parsedProviders = JSON.parse(savedProviders);
+                if (Array.isArray(parsedProviders)) setListaProveedores(parsedProviders);
+            } catch (e) {
+                console.error("Error cargando proveedores", e);
+            }
+        }
     }, []);
 
     // Set initial focus
@@ -199,6 +213,13 @@ export default function InventoryScannerApp() {
             localStorage.setItem('scanner_history_sessions', JSON.stringify(savedSessions));
         }
     }, [savedSessions, isClient]);
+
+    // Manejo Persistencia Proveedores
+    useEffect(() => {
+        if (isClient && listaProveedores.length > 0) {
+            localStorage.setItem('scanner_proveedores', JSON.stringify(listaProveedores));
+        }
+    }, [listaProveedores, isClient]);
 
     // Retroactividad: Si cambia la moneda global o la TRM, actualizar todos los registros activos en la sesión actual.
     useEffect(() => {
@@ -485,9 +506,12 @@ export default function InventoryScannerApp() {
             String(now.getMinutes()).padStart(2, '0') + ":" +
             String(now.getSeconds()).padStart(2, '0');
 
+        const activeProvider = proveedor.trim() || 'No Especificado';
+
         const newRecord: InventoryRecord = {
             FechaHora: formattedDate,
             Lote: currentBatch,
+            Proveedor: activeProvider,
             Tipo: finalTipo,
             UPC: upcVal,
             Nombre: matchedProduct?.NOMBRE || 'N/A',
@@ -501,6 +525,10 @@ export default function InventoryScannerApp() {
             TasaCambio: currency === 'USD' ? parsedExRate : 1,
             CostoTotalCOP: finalCostoTotalCOP
         };
+
+        if (proveedor.trim() && !listaProveedores.includes(proveedor.trim())) {
+            setListaProveedores(prev => [...prev, proveedor.trim()]);
+        }
 
         setRecords((prev) => [newRecord, ...prev]);
         showToast(`Agregado: UPC ${upcVal} (${parsedQty} uds)`, 'success');
@@ -555,6 +583,7 @@ export default function InventoryScannerApp() {
         const dataToExport = records.map(r => ({
             FechaHora: r.FechaHora,
             Lote: r.Lote,
+            Proveedor: r.Proveedor,
             Tipo: r.Tipo,
             UPC: r.UPC,
             Nombre: r.Nombre,
@@ -581,6 +610,7 @@ export default function InventoryScannerApp() {
         const colWidths = [
             { wch: 20 }, // FechaHora
             { wch: 25 }, // Lote
+            { wch: 25 }, // Proveedor
             { wch: 10 }, // Tipo
             { wch: 20 }, // UPC
             { wch: 40 }, // Nombre
@@ -803,8 +833,8 @@ export default function InventoryScannerApp() {
                         <div className="flex flex-col">
                             <h1 className="text-xl font-black tracking-widest text-white uppercase leading-none">INGRESO DE MERCANCÍA INTELIGENTE</h1>
                             <div className="flex items-center gap-4 mt-1">
-                                <span className="text-[10px] font-bold tracking-widest uppercase text-gray-400">SERGIO ONE TECH</span>
-                                <span className="text-[10px] font-bold tracking-widest uppercase text-gray-500">Encargado NO Seleccionado</span>
+                                <span className="text-[10px] font-bold tracking-widest uppercase text-gray-400">CREADO POR HACHEVERSO</span>
+                                <span className="text-[10px] font-bold tracking-widest uppercase text-gray-500">Bodega Activa</span>
                             </div>
                         </div>
                     </div>
@@ -820,6 +850,22 @@ export default function InventoryScannerApp() {
                     {/* Batch Name Pill */}
                     <div className="flex items-center bg-dark-input px-4 py-2 rounded-xl border border-dark-border">
                         <input type="text" value={batchName} onChange={(e) => setBatchName(e.target.value)} className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[160px]" placeholder="Nombre del Lote..." />
+                        <ChevronDown size={14} className="text-gray-500 ml-2" />
+                    </div>
+
+                    {/* Provider Pill (Auto-feeding Datalist) */}
+                    <div className="flex items-center bg-dark-input px-4 py-2 rounded-xl border border-dark-border">
+                        <input
+                            list="proveedores-list"
+                            type="text"
+                            value={proveedor}
+                            onChange={(e) => setProveedor(e.target.value)}
+                            className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[170px]"
+                            placeholder="Proveedor o Cliente..."
+                        />
+                        <datalist id="proveedores-list">
+                            {listaProveedores.map((prov, i) => <option key={i} value={prov} />)}
+                        </datalist>
                         <ChevronDown size={14} className="text-gray-500 ml-2" />
                     </div>
 
