@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save } from 'lucide-react';
+import { Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { v4 as uuidv4 } from 'uuid';
@@ -26,6 +26,7 @@ interface Product {
     NOMBRE: string;
     SKU: string;
     IMAGEN: string;
+    LastCost?: number; // Historial del último costo registrado para calcular fluctuación
 }
 
 interface InventoryRecord {
@@ -417,7 +418,7 @@ export default function InventoryScannerApp() {
             return;
         }
 
-        const newProd: Product = { UPC, NOMBRE, SKU, IMAGEN };
+        const newProd: Product = { UPC, NOMBRE, SKU, IMAGEN, LastCost: 0 };
         setProductDB(prev => ({ ...prev, [UPC]: newProd }));
         setMatchedProduct(newProd);
         speakProduct(newProd.NOMBRE);
@@ -713,6 +714,20 @@ export default function InventoryScannerApp() {
             }
             return r;
         }));
+
+        // Actualizar el costo histórico en la base de datos de productos (ProductDB)
+        if (!isNaN(unitCostNum) && unitCostNum > 0) {
+            setProductDB(prev => {
+                const existingProduct = prev[upc];
+                if (existingProduct) {
+                    return {
+                        ...prev,
+                        [upc]: { ...existingProduct, LastCost: unitCostNum }
+                    };
+                }
+                return prev;
+            });
+        }
     };
 
     // --------------------------------------------------------------------
@@ -1036,18 +1051,64 @@ export default function InventoryScannerApp() {
                                             </span>
 
                                             {/* Costo Maestro Retroactivo */}
-                                            <div className="mt-3 flex items-center gap-2">
-                                                <div className="bg-[#0A0A0B] border border-[#18181A] px-3 py-1.5 rounded-lg flex items-center gap-2">
-                                                    <DollarSign size={12} className="text-gray-500" />
-                                                    <input
-                                                        type="number"
-                                                        placeholder="0"
-                                                        className="bg-transparent text-emerald-500 font-mono font-bold outline-none w-[100px] text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                                        value={group.Records[0]?.CostoUnitario === 0 && !group.Records[0].CostoTotalCOP ? "" : group.Records[0]?.CostoUnitario}
-                                                        onChange={(e) => handleUpdateUpcCost(group.UPC, e.target.value)}
-                                                    />
+                                            <div className="mt-3 flex flex-col gap-1.5">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="bg-[#0A0A0B] border border-[#18181A] px-3 py-1.5 rounded-lg flex items-center gap-2">
+                                                        <DollarSign size={12} className="text-gray-500" />
+                                                        <input
+                                                            type="number"
+                                                            placeholder="0"
+                                                            className="bg-transparent text-emerald-500 font-mono font-bold outline-none w-[100px] text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                            value={group.Records[0]?.CostoUnitario === 0 && !group.Records[0].CostoTotalCOP ? "" : group.Records[0]?.CostoUnitario}
+                                                            onChange={(e) => handleUpdateUpcCost(group.UPC, e.target.value)}
+                                                        />
+                                                    </div>
+                                                    <span className="text-[9px] uppercase font-bold tracking-widest text-gray-600 border border-gray-800 px-2 py-1 rounded">Costo Unit / {group.Records[0]?.Moneda || 'COP'}</span>
                                                 </div>
-                                                <span className="text-[9px] uppercase font-bold tracking-widest text-gray-600 border border-gray-800 px-2 py-1 rounded">Costo Unit / {group.Records[0]?.Moneda || 'COP'}</span>
+
+                                                {/* UI Inteligencia de Precios (Fase 14) */}
+                                                <div className="flex items-center gap-3 pl-1">
+                                                    {/* Equivalencia Directa a COP Oculta si ya es COP */}
+                                                    {(group.Records[0]?.Moneda === 'USD' && group.Records[0]?.CostoUnitario > 0) && (
+                                                        <span className="text-[10px] font-mono text-gray-500 font-medium">
+                                                            ≈ {formatMoney((group.Records[0].CostoUnitario * (parseFloat(exchangeRate) || 1)), 'COP')}
+                                                        </span>
+                                                    )}
+
+                                                    {/* Fluctuación Histórica */}
+                                                    {(() => {
+                                                        const currentInputCost = Number(group.Records[0]?.CostoUnitario) || 0;
+                                                        const lastSavedCost = productDB[group.UPC]?.LastCost || 0;
+
+                                                        if (lastSavedCost === 0 || currentInputCost === 0) return null;
+
+                                                        const diff = currentInputCost - lastSavedCost;
+                                                        const pctChange = (diff / lastSavedCost) * 100;
+
+                                                        if (diff > 0) {
+                                                            // Subió de precio (Alerta)
+                                                            return (
+                                                                <span className="text-[9px] font-bold tracking-widest uppercase flex items-center gap-1 text-red-400 bg-red-950/30 px-2 py-0.5 rounded">
+                                                                    Último: ${lastSavedCost} <ArrowUpRight size={10} strokeWidth={3} /> {pctChange.toFixed(0)}%
+                                                                </span>
+                                                            );
+                                                        } else if (diff < 0) {
+                                                            // Bajó de precio (Ahorro)
+                                                            return (
+                                                                <span className="text-[9px] font-bold tracking-widest uppercase flex items-center gap-1 text-emerald-400 bg-emerald-950/30 px-2 py-0.5 rounded">
+                                                                    Último: ${lastSavedCost} <ArrowDownRight size={10} strokeWidth={3} /> {Math.abs(pctChange).toFixed(0)}%
+                                                                </span>
+                                                            );
+                                                        } else {
+                                                            // Sin cambio
+                                                            return (
+                                                                <span className="text-[9px] font-bold tracking-widest uppercase flex items-center gap-1 text-gray-500 bg-gray-900 px-2 py-0.5 rounded">
+                                                                    Último: ${lastSavedCost} (-)
+                                                                </span>
+                                                            );
+                                                        }
+                                                    })()}
+                                                </div>
                                             </div>
 
                                         </div>
