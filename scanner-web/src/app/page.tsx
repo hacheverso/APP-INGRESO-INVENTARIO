@@ -14,6 +14,7 @@ interface HistorySession {
     id: string; // Timestamp
     fecha: string;
     lote: string;
+    proveedor: string;
     totalRecords: number;
     totalUnidades: number;
     costoTotalCOP: number;
@@ -659,6 +660,7 @@ export default function InventoryScannerApp() {
             id: Date.now().toString(),
             fecha: new Date().toLocaleString('es-CO'),
             lote: batchName || `Ingreso ${new Date().toISOString().split('T')[0]}`,
+            proveedor: proveedor,
             totalRecords: records.length,
             totalUnidades: currentTotalUnidades,
             costoTotalCOP: currentCostoTotalCOP,
@@ -679,6 +681,7 @@ export default function InventoryScannerApp() {
 
         setRecords(session.records);
         setBatchName(session.lote);
+        setProveedor(session.proveedor || '');
         setCurrency(session.monedaBase);
         setView('SCANNER');
 
@@ -942,7 +945,14 @@ export default function InventoryScannerApp() {
                                         <div className="flex justify-between items-start">
                                             <div>
                                                 <h3 className="text-white font-bold text-lg mb-1">{session.lote}</h3>
-                                                <p className="text-gray-500 text-xs font-mono">{session.fecha}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-gray-500 text-xs font-mono">{session.fecha}</p>
+                                                    {session.proveedor && (
+                                                        <span className="text-[9px] bg-dark-input border border-dark-border text-gray-400 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                                                            {session.proveedor}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                             <div className="bg-[#151E32] text-brand-blue px-3 py-1 rounded-lg text-xs font-bold font-mono">
                                                 {session.totalUnidades} UND
