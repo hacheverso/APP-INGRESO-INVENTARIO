@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { v4 as uuidv4 } from 'uuid';
@@ -68,13 +68,13 @@ interface Toast {
 export default function InventoryScannerApp() {
     const [records, setRecords] = useState<InventoryRecord[]>([]);
     const [mode, setMode] = useState<ScanMode>('UPC_SERIAL');
+    const [view, setView] = useState<AppView>('SCANNER');
 
     // Finanzas Globales de Sesión
     const [currency, setCurrency] = useState<Currency>('COP');
     const [exchangeRate, setExchangeRate] = useState<string>("4000"); // TRM base
 
     // History and Navigation State
-    const [view, setView] = useState<AppView>('SCANNER');
     const [savedSessions, setSavedSessions] = useState<HistorySession[]>([]);
 
     // Product Database State
@@ -578,10 +578,10 @@ export default function InventoryScannerApp() {
         setDeleteConfirm({ id: null, type: 'record' });
     };
 
-    const exportToExcel = () => {
-        if (records.length === 0) return alert("No hay registros para exportar.");
+    const exportToExcel = (recordsToExport: InventoryRecord[], loteName: string, showEmptySessionPrompt: boolean = true) => {
+        if (recordsToExport.length === 0) return alert("No hay registros para exportar.");
 
-        const dataToExport = records.map(r => ({
+        const dataToExport = recordsToExport.map(r => ({
             FechaHora: r.FechaHora,
             Lote: r.Lote,
             Proveedor: r.Proveedor,
@@ -630,15 +630,18 @@ export default function InventoryScannerApp() {
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Ingresos");
 
-        const fileName = `ingreso_inventario_finanzas_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.xlsx`;
+        const safeLoteName = loteName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const fileName = `ingreso_${safeLoteName}_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.xlsx`;
         XLSX.writeFile(workbook, fileName);
 
         showToast("✅ Exportación exitosa");
 
-        setTimeout(() => {
-            if (confirm("¿Deseas vaciar la sesión actual ahora que has exportado los datos con éxito?")) setRecords([]);
-            upcRef.current?.focus();
-        }, 500);
+        if (showEmptySessionPrompt) {
+            setTimeout(() => {
+                if (confirm("¿Deseas vaciar la sesión actual ahora que has exportado los datos con éxito?")) setRecords([]);
+                upcRef.current?.focus();
+            }, 500);
+        }
     };
 
     const saveCurrentSessionToHistory = () => {
@@ -839,7 +842,7 @@ export default function InventoryScannerApp() {
             {/* Header Global (Dark Terminal UI) - Con espacio superior para MacOS Window Controls */}
             <header className="bg-dark-bg px-6 lg:px-8 pt-12 pb-5 flex flex-col xl:flex-row justify-between items-center gap-4 z-10 transition-colors duration-300">
                 {/* Logo & Título Izquierdo */}
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 cursor-pointer" onClick={() => setView('SCANNER')}>
                     <button className="p-2 bg-dark-input hover:bg-gray-800 rounded-lg text-gray-400 transition-colors">
                         <ArrowLeft size={20} />
                     </button>
@@ -857,6 +860,10 @@ export default function InventoryScannerApp() {
 
                 {/* Navbar Configurations (Derecha) */}
                 <div className="flex flex-wrap items-center justify-end gap-3 z-20 relative">
+                    {/* Botón Navegar a Historial */}
+                    <button onClick={() => setView(view === 'SCANNER' ? 'HISTORY' : 'SCANNER')} className="flex items-center gap-2 bg-dark-input hover:bg-[#151E32] text-brand-blue hover:text-white px-3 py-1.5 rounded-xl border border-brand-blue/30 transition-all font-bold tracking-wider text-[10px] uppercase">
+                        {view === 'SCANNER' ? <><History size={14} /> Historial</> : <><ScanLine size={14} /> Escáner</>}
+                    </button>
                     {/* Boton Importar CSV */}
                     <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 bg-dark-input hover:bg-[#151E32] text-gray-400 hover:text-brand-blue px-3 py-1.5 rounded-xl border border-dark-border hover:border-brand-blue/30 transition-all font-bold tracking-wider text-[10px] uppercase" title="Cargar Base de Datos Local UI CSV">
                         <UploadCloud size={14} /> Importar DB
@@ -907,320 +914,324 @@ export default function InventoryScannerApp() {
                 </div>
             </header>
 
-            {/* Container Principal */}
-            <main className="flex-1 flex flex-col lg:flex-row gap-6 p-6 lg:p-8 min-h-0 container mx-auto max-w-[1600px]">
+            {/* Container Principal Condicionado a la Vista */}
+            <main className="flex-1 flex flex-col lg:flex-row gap-6 p-6 lg:p-8 min-h-0 container mx-auto max-w-[1600px] overflow-hidden">
 
-                {/* Left Panel: Inputs (Dark UI Mode) */}
-                <div className="w-full xl:w-[600px] flex flex-col gap-6 flex-shrink-0">
-
-                    {/* Top Split Section: Total (Left) vs Controls (Right) */}
-                    <div className="flex gap-4 h-[120px]">
-                        {/* Total Ingresado Blue Card */}
-                        <div className="flex-1 bg-blue-600 rounded-3xl p-6 text-white flex justify-between items-end shadow-[0_0_30px_rgba(37,99,235,0.15)] relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full transform translate-x-1/3 -translate-y-1/3 group-hover:bg-white/10 transition-colors"></div>
-                            <div className="flex flex-col relative z-10">
-                                <span className="text-[10px] font-bold uppercase tracking-widest opacity-80 mb-1">Total Ingresado</span>
-                                <span className="text-7xl font-black leading-none drop-shadow-md">{totalUnits}</span>
-                            </div>
-                            <div className="flex flex-col items-end relative z-10">
-                                <span className="text-2xl font-black uppercase tracking-widest leading-none drop-shadow-md">Unidades</span>
-                                <span className="text-[9px] bg-white/20 text-white px-2 py-0.5 rounded-sm uppercase font-bold mt-2 shadow-sm tracking-wider">{currency} Mode</span>
-                            </div>
+                {view === 'HISTORY' ? (
+                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="flex items-center gap-3 text-white mb-2">
+                            <History size={24} className="text-brand-blue" />
+                            <h2 className="text-2xl font-black tracking-widest uppercase">Historial de Ingresos</h2>
                         </div>
 
-                        {/* Controls Vertical Stack */}
-                        <div className="w-[180px] flex flex-col gap-3">
-                            <button onClick={() => { setMode('UPC_SERIAL'); upcRef.current?.focus(); }} className={`flex-1 flex gap-3 items-center justify-center rounded-2xl border transition-all duration-300 ${mode === 'UPC_SERIAL' ? 'bg-[#151E32] border-brand-blue/30 text-brand-blue shadow-[inset_0_0_20px_rgba(31,78,120,0.2)]' : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-300'}`}>
-                                <ScanLine size={18} className={mode === 'UPC_SERIAL' ? 'opacity-100' : 'opacity-40'} />
-                                <div className="flex flex-col items-start leading-none text-left">
-                                    <span className={`text-xs font-black uppercase tracking-widest ${mode === 'UPC_SERIAL' ? 'text-brand-blue' : 'text-gray-400'}`}>Serializado</span>
-                                    <span className="text-[8px] uppercase font-bold tracking-widest opacity-60 mt-1 text-gray-500">UNO A UNO (F1)</span>
-                                </div>
-                            </button>
-                            <button onClick={() => { setMode('MASSIVE'); upcRef.current?.focus(); }} className={`flex-1 flex gap-3 items-center justify-center rounded-2xl border transition-all duration-300 ${mode === 'MASSIVE' ? 'bg-[#151E32] border-brand-blue/30 text-brand-blue shadow-[inset_0_0_20px_rgba(31,78,120,0.2)]' : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-300'}`}>
-                                <Layers size={18} className={mode === 'MASSIVE' ? 'opacity-100' : 'opacity-40'} />
-                                <div className="flex flex-col items-start leading-none text-left">
-                                    <span className={`text-xs font-black uppercase tracking-widest ${mode === 'MASSIVE' ? 'text-brand-blue' : 'text-gray-400'}`}>Masivo</span>
-                                    <span className="text-[8px] uppercase font-bold tracking-widest opacity-60 mt-1 text-gray-500">CANTIDAD (F2)</span>
-                                </div>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Big Dark Canvas Box (Ghost Input) */}
-                    <div className={`flex-1 bg-dark-input rounded-3xl border border-dark-border p-6 flex flex-col items-center justify-center relative min-h-[450px] transition-all duration-300 group overflow-hidden ${isFlashing && scanStatus === 'success' ? 'ring-2 ring-emerald-500/50 bg-emerald-900/10' : ''} ${isFlashing && scanStatus === 'error' ? 'ring-2 ring-red-500/50 bg-red-900/10' : ''}`}>
-
-                        {/* Tarjeta de Producto Reconocido (Oculta el input visualmente cuando hay match) */}
-                        {matchedProduct ? (
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-6 z-30 bg-dark-input rounded-3xl">
-                                <div className="flex flex-col items-center gap-4 text-center translate-y-[-10px] animate-in slide-in-from-bottom-4 duration-300">
-                                    {matchedProduct.IMAGEN && (
-                                        <div className="w-[180px] h-[180px] rounded-2xl overflow-hidden bg-white/5 border border-white/10 shadow-2xl p-4 flex items-center justify-center">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img src={matchedProduct.IMAGEN} alt={matchedProduct.NOMBRE} className="max-w-full max-h-full object-contain" />
-                                        </div>
-                                    )}
-                                    <h2 className="text-3xl md:text-4xl font-black text-white leading-tight uppercase drop-shadow-xl">{matchedProduct.NOMBRE}</h2>
-                                    <span className="text-brand-blue font-mono text-xl tracking-widest">{matchedProduct.UPC}</span>
-                                </div>
-                            </div>
-                        ) : null}
-
-                        {/* Input Real y Visible */}
-                        <div className="w-full flex items-center justify-center z-20">
-                            <input
-                                ref={upcRef}
-                                type="text"
-                                value={upc}
-                                onChange={(e) => { setUpc(e.target.value); setMatchedProduct(null); }}
-                                onKeyDown={(e) => handleKeyDown(e, 'upc')}
-                                className="w-full bg-transparent outline-none text-center text-4xl md:text-5xl font-black tracking-widest uppercase text-gray-200 placeholder-[#1d1f27]"
-                                placeholder="ESPERANDO UPC..."
-                                autoFocus
-                            />
-                        </div>
-
-                        {/* Bottom Label Absoluto */}
-                        <span className="absolute bottom-8 text-gray-600 font-bold tracking-[0.2em] uppercase text-[10px]">Paso 1: Identificar Producto</span>
-
-                        {/* Candado Fijo Esquina */}
-                        <button
-                            onClick={(e) => { e.stopPropagation(); setKeepUpc(!keepUpc); }}
-                            className={`absolute top-6 right-6 p-3 rounded-xl transition-all flex items-center justify-center z-30 ${keepUpc ? 'bg-brand-blue text-white shadow-lg' : 'bg-black/20 text-gray-500 hover:text-gray-300'}`}
-                            title="Fijar este UPC para múltiples escaneos continuos"
-                        >
-                            {keepUpc ? <Lock size={16} /> : <Unlock size={16} />}
-                        </button>
-                    </div>
-
-                    {/* Inputs Flotantes/Ocultos para Serial y QTY (Aparecen si Masivo o Serializado lo requiere) */}
-                    <div className="flex gap-4">
-                        {mode === 'UPC_SERIAL' && (
-                            <div className="flex-1">
-                                <input ref={serialRef} type="text" value={serial} onChange={(e) => setSerial(e.target.value)} onKeyDown={(e) => handleKeyDown(e, 'serial')} className="w-full bg-dark-input border border-dark-border rounded-2xl px-5 py-4 outline-none focus:ring-1 focus:ring-brand-blue focus:border-brand-blue transition-all font-mono text-xl tracking-widest text-brand-blue placeholder-gray-600 text-center uppercase" placeholder="ESCANEAR SERIAL AQUÍ" />
-                            </div>
-                        )}
-                        {mode === 'MASSIVE' && (
-                            <div className="flex-1 flex gap-4">
-                                <input ref={qtyRef} type="number" value={qty} onChange={(e) => setQty(e.target.value)} onKeyDown={(e) => handleKeyDown(e, 'qty')} min="1" className="w-[120px] bg-dark-input border border-dark-border rounded-2xl px-5 py-4 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-sans text-2xl font-black text-center text-white placeholder-gray-600" placeholder="1" />
-                                <button onClick={addRecord} className="flex-1 bg-brand-blue hover:bg-blue-600 text-white font-bold py-4 px-4 rounded-2xl transition-all text-sm uppercase tracking-widest shadow-lg shadow-brand-blue/20 flex items-center justify-center gap-2">
-                                    <PackageCheck size={20} /> Ingresar
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                </div>
-
-                {/* Right Panel: Historial Reciente (Dark Terminal Grid) */}
-                <div className="flex-1 flex flex-col bg-[#0F1014] border border-dark-border rounded-3xl relative overflow-hidden min-h-[500px]">
-
-                    {/* Header (Top) */}
-                    <div className="flex justify-between items-center px-8 py-6 border-b border-dark-border bg-[#0A0A0B]/50">
-                        <h2 className="text-white font-black tracking-[0.2em] text-sm flex items-center gap-3">
-                            <History size={18} className="text-gray-500" /> HISTORIAL RECIENTE
-                        </h2>
-                        <button onClick={() => setDeleteConfirm({ id: 'all', type: 'session' })} className="text-gray-600 hover:text-red-500 transition-colors p-2 bg-dark-input rounded-xl hover:bg-red-500/10">
-                            <Trash2 size={16} />
-                        </button>
-                    </div>
-
-                    {/* Dynamic List */}
-                    <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 pb-32">
-                        {groupedRecords.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center opacity-40">
-                                <Box size={48} className="text-gray-600 mb-4" />
-                                <span className="font-bold tracking-widest uppercase text-sm text-gray-500">Sesión Vacía</span>
+                        {savedSessions.length === 0 ? (
+                            <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40">
+                                <FolderOpen size={48} className="text-gray-600 mb-4" />
+                                <p className="text-gray-400 font-bold uppercase tracking-widest">No hay sesiones guardadas en el dispositivo</p>
                             </div>
                         ) : (
-                            groupedRecords.map((group, groupIndex) => (
-                                <div key={group.UPC} className={`bg-transparent border rounded-2xl p-5 md:p-6 flex flex-col relative overflow-hidden transition-all duration-300 ${groupIndex === 0 ? 'border-brand-blue/30 bg-brand-blue/5' : 'border-[#18181A] opacity-70 hover:opacity-100'}`}>
-
-                                    {/* Borde luminiscente izquierdo (Solo en el producto activo/más reciente) */}
-                                    {groupIndex === 0 && (
-                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-blue shadow-[0_0_15px_rgba(37,99,235,1)]"></div>
-                                    )}
-
-                                    {/* Titulo y Badge */}
-                                    <div className="flex justify-between items-start mb-5 pl-2">
-                                        <div className="flex flex-col pr-4">
-                                            <h3 className="text-white font-black text-sm md:text-base uppercase tracking-widest leading-tight">{group.Nombre}</h3>
-                                            <span className="text-gray-500 font-bold text-[10px] tracking-widest uppercase mt-1 flex gap-2">
-                                                <span>{group.UPC}</span>
-                                                <span className="opacity-50">#{groupedRecords.length - groupIndex}</span>
-                                            </span>
-
-                                            {/* Costo Maestro Retroactivo */}
-                                            <div className="mt-3 flex flex-col gap-1.5">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="bg-[#0A0A0B] border border-[#18181A] px-3 py-1.5 rounded-lg flex items-center gap-2">
-                                                        <DollarSign size={12} className="text-gray-500" />
-                                                        <input
-                                                            type="number"
-                                                            placeholder="0"
-                                                            className="bg-transparent text-emerald-500 font-mono font-bold outline-none w-[100px] text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                                            value={group.Records[0]?.CostoUnitario === 0 && !group.Records[0].CostoTotalCOP ? "" : group.Records[0]?.CostoUnitario}
-                                                            onChange={(e) => handleUpdateUpcCost(group.UPC, e.target.value)}
-                                                        />
-                                                    </div>
-                                                    <span className="text-[9px] uppercase font-bold tracking-widest text-gray-600 border border-gray-800 px-2 py-1 rounded">Costo Unit / {group.Records[0]?.Moneda || 'COP'}</span>
-                                                </div>
-
-                                                {/* UI Inteligencia de Precios (Fase 14) */}
-                                                <div className="flex items-center gap-3 pl-1">
-                                                    {/* Equivalencia Directa a COP Oculta si ya es COP */}
-                                                    {(group.Records[0]?.Moneda === 'USD' && group.Records[0]?.CostoUnitario > 0) && (
-                                                        <span className="text-[10px] font-mono text-gray-500 font-medium">
-                                                            ≈ {formatMoney((group.Records[0].CostoUnitario * (parseFloat(exchangeRate) || 1)), 'COP')}
-                                                        </span>
-                                                    )}
-
-                                                    {/* Fluctuación Histórica */}
-                                                    {(() => {
-                                                        const currentInputCost = Number(group.Records[0]?.CostoUnitario) || 0;
-                                                        const lastSavedCost = productDB[group.UPC]?.LastCost || 0;
-
-                                                        if (lastSavedCost === 0 || currentInputCost === 0) return null;
-
-                                                        const diff = currentInputCost - lastSavedCost;
-                                                        const pctChange = (diff / lastSavedCost) * 100;
-
-                                                        if (diff > 0) {
-                                                            // Subió de precio (Alerta)
-                                                            return (
-                                                                <span className="text-[9px] font-bold tracking-widest uppercase flex items-center gap-1 text-red-400 bg-red-950/30 px-2 py-0.5 rounded">
-                                                                    Último: ${lastSavedCost} <ArrowUpRight size={10} strokeWidth={3} /> {pctChange.toFixed(0)}%
-                                                                </span>
-                                                            );
-                                                        } else if (diff < 0) {
-                                                            // Bajó de precio (Ahorro)
-                                                            return (
-                                                                <span className="text-[9px] font-bold tracking-widest uppercase flex items-center gap-1 text-emerald-400 bg-emerald-950/30 px-2 py-0.5 rounded">
-                                                                    Último: ${lastSavedCost} <ArrowDownRight size={10} strokeWidth={3} /> {Math.abs(pctChange).toFixed(0)}%
-                                                                </span>
-                                                            );
-                                                        } else {
-                                                            // Sin cambio
-                                                            return (
-                                                                <span className="text-[9px] font-bold tracking-widest uppercase flex items-center gap-1 text-gray-500 bg-gray-900 px-2 py-0.5 rounded">
-                                                                    Último: ${lastSavedCost} (-)
-                                                                </span>
-                                                            );
-                                                        }
-                                                    })()}
-                                                </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                {savedSessions.map(session => (
+                                    <div key={session.id} className="bg-dark-card border border-dark-border rounded-2xl p-6 flex flex-col gap-4 hover:border-brand-blue/50 transition-colors group">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <h3 className="text-white font-bold text-lg mb-1">{session.lote}</h3>
+                                                <p className="text-gray-500 text-xs font-mono">{session.fecha}</p>
                                             </div>
-
+                                            <div className="bg-[#151E32] text-brand-blue px-3 py-1 rounded-lg text-xs font-bold font-mono">
+                                                {session.totalUnidades} UND
+                                            </div>
                                         </div>
 
-                                        {/* Total Units Badge Neon */}
-                                        <div className={`rounded-2xl px-5 py-3 flex flex-col items-center justify-center flex-shrink-0 ${groupIndex === 0 ? 'bg-brand-blue shadow-[0_0_25px_rgba(37,99,235,0.4)]' : 'bg-dark-input border border-dark-border'}`}>
-                                            <span className={`font-black text-2xl leading-none ${groupIndex === 0 ? 'text-white' : 'text-gray-300'}`}>{group.TotalUnidades}</span>
-                                            <span className={`font-bold text-[9px] uppercase tracking-widest mt-1 ${groupIndex === 0 ? 'text-white/80' : 'text-gray-600'}`}>UND</span>
+                                        <div className="grid grid-cols-2 gap-4 my-2">
+                                            <div className="flex flex-col">
+                                                <span className="text-gray-600 text-[10px] uppercase font-bold tracking-widest">Escaneos</span>
+                                                <span className="text-gray-300 font-mono">{session.totalRecords}</span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-gray-600 text-[10px] uppercase font-bold tracking-widest">Valor ({session.monedaBase})</span>
+                                                <span className="text-emerald-400 font-mono font-bold">
+                                                    {formatMoney(session.monedaBase === 'COP' ? session.costoTotalCOP : (session.costoTotalCOP / parseFloat(exchangeRate)), session.monedaBase)}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-2 mt-auto pt-4 border-t border-dark-border">
+                                            <button
+                                                onClick={() => loadSessionForEditing(session)}
+                                                className="flex-1 flex items-center justify-center gap-2 bg-dark-input hover:bg-white hover:text-black text-gray-400 py-2 rounded-xl transition-colors font-bold text-xs uppercase"
+                                            >
+                                                <ScanLine size={14} /> Reabrir
+                                            </button>
+                                            <button
+                                                onClick={() => exportToExcel(session.records, session.lote, false)}
+                                                className="flex-1 flex items-center justify-center gap-2 bg-[#2E7D32]/20 hover:bg-[#2E7D32] text-[#4CAF50] hover:text-white py-2 rounded-xl border border-[#2E7D32]/50 transition-colors font-bold text-xs uppercase"
+                                            >
+                                                <FileDown size={14} /> Excel
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    if (confirm(`¿Eliminar la sesión "${session.lote}" permanentemente?`)) {
+                                                        setSavedSessions(prev => prev.filter(s => s.id !== session.id));
+                                                        showToast("Sesión eliminada", "success");
+                                                    }
+                                                }}
+                                                className="px-3 flex items-center justify-center bg-dark-input hover:bg-red-900/50 text-gray-500 hover:text-red-400 py-2 rounded-xl border border-transparent transition-colors"
+                                                title="Eliminar del dispositivo"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
                                         </div>
                                     </div>
-
-                                    {/* Seriales Grid (The Core Clone Feature) */}
-                                    <div className="flex flex-wrap gap-2 pl-2">
-                                        {group.Records.map((r, itemIndex) => {
-                                            const isMostRecentScanned = groupIndex === 0 && itemIndex === 0;
-                                            return (
-                                                <div key={r.ID} className={`group/tag flex items-center gap-3 px-3.5 py-2.5 rounded-xl border transition-all duration-300 ${isMostRecentScanned ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.6)] border-transparent' : 'bg-[#0A0A0B] border-dark-border text-gray-400 hover:border-gray-700 hover:text-gray-200'}`}>
-                                                    <span className="font-mono text-[10px] font-bold tracking-widest uppercase">
-                                                        {r.Tipo === 'SERIAL' ? r.Serial : `MASIVO x${r.Cantidad}`}
-                                                    </span>
-                                                    <button onClick={(e) => handleDeleteRecord(r.ID, e)} className={`transition-opacity ${isMostRecentScanned ? 'opacity-80 hover:opacity-100 hover:text-white' : 'opacity-0 group-hover/tag:opacity-100 hover:text-red-400'}`}>
-                                                        <X size={12} strokeWidth={3} />
-                                                    </button>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            ))
+                                ))}
+                            </div>
                         )}
                     </div>
+                ) : (
+                    <>
+                        {/* Left Panel: Inputs (Dark UI Mode) */}
+                        <div className="w-full xl:w-[600px] flex flex-col gap-6 flex-shrink-0 animate-in slide-in-from-left-4 duration-300">
 
-                    {/* BOTÓN MÁGICO 'GUARDAR' */}
-                    {records.length > 0 && (
-                        <div className="absolute bottom-6 right-6 md:bottom-8 md:right-8 z-30 animate-in slide-in-from-bottom-4 zoom-in-95 duration-300">
-                            <button onClick={saveCurrentSessionToHistory} className="bg-black hover:bg-white hover:text-black text-white px-8 py-5 rounded-3xl font-black uppercase tracking-[0.2em] text-xs flex items-center gap-3 shadow-[0_20px_40px_rgba(0,0,0,0.8)] border border-gray-800 transition-all active:scale-95 group">
-                                <Save size={18} className="group-hover:text-black transition-colors" /> GUARDAR
-                            </button>
-                        </div>
-                    )}
-                </div>
-            </main>
-            ) : (
-            <main className="flex-1 p-6 lg:p-8 container mx-auto max-w-[1200px] animate-in fade-in duration-300">
-                {/* ------------------------------------------------------------------------------------------------ */}
-                {/* PANTALLA DE HISTORIAL (PHASE 7) */}
-                {/* ------------------------------------------------------------------------------------------------ */}
-                <div className="flex flex-col gap-6">
-
-                    <div className="flex items-end justify-between border-b border-gray-200 dark:border-dark-border pb-4">
-                        <div>
-                            <h2 className="text-2xl font-black tracking-tight text-gray-800 dark:text-gray-100 flex items-center gap-3">
-                                <History className="text-brand-blue" size={28} />
-                                Historial de Recepciones
-                            </h2>
-                            <p className="text-gray-500 mt-2 text-sm font-medium">Aquí residen todas las recepciones cerradas permanentemente. Puedes auditarlas o re-abrirlas para continuar editando sus costos o agregarles mercancía.</p>
-                        </div>
-                    </div>
-
-                    {savedSessions.length === 0 ? (
-                        <div className="bg-white dark:bg-dark-card rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm p-16 flex flex-col items-center justify-center text-center">
-                            <ScanLine size={64} className="text-gray-200 dark:text-gray-700 mb-6" />
-                            <h3 className="text-xl font-bold text-gray-700 dark:text-gray-300 mb-2">Aún no hay recepciones archivadas</h3>
-                            <p className="text-gray-500 max-w-md">Realiza tu primer ingreso en la pestaña de "Captura Activa" y dale al botón de "Guardar Historial y Cerrar Recepción".</p>
-                            <button onClick={() => setView('SCANNER')} className="mt-8 bg-brand-blue text-white font-bold px-8 py-3 rounded-xl shadow-md cursor-pointer hover:bg-brand-blue-hover transition-colors">Empezar a Escanear</button>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {savedSessions.map((session) => (
-                                <div key={session.id} className="bg-white dark:bg-dark-card rounded-2xl border border-gray-200 dark:border-dark-border shadow-sm hover:shadow-md transition-shadow p-6 flex flex-col">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="bg-gray-100 dark:bg-dark-input text-gray-800 dark:text-gray-300 text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded">CERRADA</span>
-                                                <span className="text-xs font-mono text-gray-400">{session.fecha}</span>
-                                            </div>
-                                            <h3 className="text-lg font-bold text-brand-blue truncate" title={session.lote}>{session.lote}</h3>
-                                        </div>
-                                        <button onClick={(e) => deleteHistorySession(session.id, e)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg transition-colors" title="Borrar este historial para siempre">
-                                            <Trash2 size={18} />
-                                        </button>
+                            {/* Top Split Section: Total (Left) vs Controls (Right) */}
+                            <div className="flex gap-4 h-[120px]">
+                                {/* Total Ingresado Blue Card */}
+                                <div className="flex-1 bg-blue-600 rounded-3xl p-6 text-white flex justify-between items-end shadow-[0_0_30px_rgba(37,99,235,0.15)] relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full transform translate-x-1/3 -translate-y-1/3 group-hover:bg-white/10 transition-colors"></div>
+                                    <div className="flex flex-col relative z-10">
+                                        <span className="text-[10px] font-bold uppercase tracking-widest opacity-80 mb-1">Total Ingresado</span>
+                                        <span className="text-7xl font-black leading-none drop-shadow-md">{totalUnits}</span>
                                     </div>
-
-                                    <div className="grid grid-cols-3 gap-2 bg-gray-50 dark:bg-dark-input/50 p-3 rounded-xl border border-gray-100 dark:border-dark-border/50 mb-6">
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] uppercase font-bold text-gray-500">Items (Tipos)</span>
-                                            <span className="font-black text-gray-800 dark:text-gray-200">{session.totalRecords}</span>
-                                        </div>
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] uppercase font-bold text-gray-500">Unidades Físicas</span>
-                                            <span className="font-black text-gray-800 dark:text-gray-200">{session.totalUnidades}</span>
-                                        </div>
-                                        <div className="flex flex-col text-right">
-                                            <span className="text-[10px] uppercase font-bold text-gray-500">Total {session.monedaBase}</span>
-                                            <span className="font-black text-brand-green">{formatMoney(session.costoTotalCOP, session.monedaBase)}</span>
-                                        </div>
+                                    <div className="flex flex-col items-end relative z-10">
+                                        <span className="text-2xl font-black uppercase tracking-widest leading-none drop-shadow-md">Unidades</span>
+                                        <span className="text-[9px] bg-white/20 text-white px-2 py-0.5 rounded-sm uppercase font-bold mt-2 shadow-sm tracking-wider">{currency} Mode</span>
                                     </div>
+                                </div>
 
-                                    <button
-                                        onClick={() => loadSessionForEditing(session)}
-                                        className="mt-auto flex items-center justify-center gap-2 w-full py-3 bg-white dark:bg-dark-input hover:bg-blue-50 dark:hover:bg-dark-border text-brand-blue dark:text-gray-100 font-bold border border-brand-blue/30 dark:border-dark-border rounded-xl transition-colors shadow-sm"
-                                    >
-                                        <FolderOpen size={18} /> Reabrir y Editar
+                                {/* Controls Vertical Stack */}
+                                <div className="w-[180px] flex flex-col gap-3">
+                                    <button onClick={() => { setMode('UPC_SERIAL'); upcRef.current?.focus(); }} className={`flex-1 flex gap-3 items-center justify-center rounded-2xl border transition-all duration-300 ${mode === 'UPC_SERIAL' ? 'bg-[#151E32] border-brand-blue/30 text-brand-blue shadow-[inset_0_0_20px_rgba(31,78,120,0.2)]' : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-300'}`}>
+                                        <ScanLine size={18} className={mode === 'UPC_SERIAL' ? 'opacity-100' : 'opacity-40'} />
+                                        <div className="flex flex-col items-start leading-none text-left">
+                                            <span className={`text-xs font-black uppercase tracking-widest ${mode === 'UPC_SERIAL' ? 'text-brand-blue' : 'text-gray-400'}`}>Serializado</span>
+                                            <span className="text-[8px] uppercase font-bold tracking-widest opacity-60 mt-1 text-gray-500">UNO A UNO (F1)</span>
+                                        </div>
+                                    </button>
+                                    <button onClick={() => { setMode('MASSIVE'); upcRef.current?.focus(); }} className={`flex-1 flex gap-3 items-center justify-center rounded-2xl border transition-all duration-300 ${mode === 'MASSIVE' ? 'bg-[#151E32] border-brand-blue/30 text-brand-blue shadow-[inset_0_0_20px_rgba(31,78,120,0.2)]' : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-300'}`}>
+                                        <Layers size={18} className={mode === 'MASSIVE' ? 'opacity-100' : 'opacity-40'} />
+                                        <div className="flex flex-col items-start leading-none text-left">
+                                            <span className={`text-xs font-black uppercase tracking-widest ${mode === 'MASSIVE' ? 'text-brand-blue' : 'text-gray-400'}`}>Masivo</span>
+                                            <span className="text-[8px] uppercase font-bold tracking-widest opacity-60 mt-1 text-gray-500">CANTIDAD (F2)</span>
+                                        </div>
                                     </button>
                                 </div>
-                            ))}
+                            </div>
+
+                            {/* Big Dark Canvas Box (Ghost Input) */}
+                            <div className={`flex-1 bg-dark-input rounded-3xl border border-dark-border p-6 flex flex-col items-center justify-center relative min-h-[450px] transition-all duration-300 group overflow-hidden ${isFlashing && scanStatus === 'success' ? 'ring-2 ring-emerald-500/50 bg-emerald-900/10' : ''} ${isFlashing && scanStatus === 'error' ? 'ring-2 ring-red-500/50 bg-red-900/10' : ''}`}>
+
+                                {/* Tarjeta de Producto Reconocido (Oculta el input visualmente cuando hay match) */}
+                                {matchedProduct ? (
+                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-6 z-30 bg-dark-input rounded-3xl">
+                                        <div className="flex flex-col items-center gap-4 text-center translate-y-[-10px] animate-in slide-in-from-bottom-4 duration-300">
+                                            {matchedProduct.IMAGEN && (
+                                                <div className="w-[180px] h-[180px] rounded-2xl overflow-hidden bg-white/5 border border-white/10 shadow-2xl p-4 flex items-center justify-center">
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img src={matchedProduct.IMAGEN} alt={matchedProduct.NOMBRE} className="max-w-full max-h-full object-contain" />
+                                                </div>
+                                            )}
+                                            <h2 className="text-3xl md:text-4xl font-black text-white leading-tight uppercase drop-shadow-xl">{matchedProduct.NOMBRE}</h2>
+                                            <span className="text-brand-blue font-mono text-xl tracking-widest">{matchedProduct.UPC}</span>
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                {/* Input Real y Visible */}
+                                <div className="w-full flex items-center justify-center z-20">
+                                    <input
+                                        ref={upcRef}
+                                        type="text"
+                                        value={upc}
+                                        onChange={(e) => { setUpc(e.target.value); setMatchedProduct(null); }}
+                                        onKeyDown={(e) => handleKeyDown(e, 'upc')}
+                                        className="w-full bg-transparent outline-none text-center text-4xl md:text-5xl font-black tracking-widest uppercase text-gray-200 placeholder-[#1d1f27]"
+                                        placeholder="ESPERANDO UPC..."
+                                        autoFocus
+                                    />
+                                </div>
+
+                                {/* Bottom Label Absoluto */}
+                                <span className="absolute bottom-8 text-gray-600 font-bold tracking-[0.2em] uppercase text-[10px]">Paso 1: Identificar Producto</span>
+
+                                {/* Candado Fijo Esquina */}
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setKeepUpc(!keepUpc); }}
+                                    className={`absolute top-6 right-6 p-3 rounded-xl transition-all flex items-center justify-center z-30 ${keepUpc ? 'bg-brand-blue text-white shadow-lg' : 'bg-black/20 text-gray-500 hover:text-gray-300'}`}
+                                    title="Fijar este UPC para múltiples escaneos continuos"
+                                >
+                                    {keepUpc ? <Lock size={16} /> : <Unlock size={16} />}
+                                </button>
+                            </div>
+
+                            {/* Inputs Flotantes/Ocultos para Serial y QTY (Aparecen si Masivo o Serializado lo requiere) */}
+                            <div className="flex gap-4">
+                                {mode === 'UPC_SERIAL' && (
+                                    <div className="flex-1">
+                                        <input ref={serialRef} type="text" value={serial} onChange={(e) => setSerial(e.target.value)} onKeyDown={(e) => handleKeyDown(e, 'serial')} className="w-full bg-dark-input border border-dark-border rounded-2xl px-5 py-4 outline-none focus:ring-1 focus:ring-brand-blue focus:border-brand-blue transition-all font-mono text-xl tracking-widest text-brand-blue placeholder-gray-600 text-center uppercase" placeholder="ESCANEAR SERIAL AQUÍ" />
+                                    </div>
+                                )}
+                                {mode === 'MASSIVE' && (
+                                    <div className="flex-1 flex gap-4">
+                                        <input ref={qtyRef} type="number" value={qty} onChange={(e) => setQty(e.target.value)} onKeyDown={(e) => handleKeyDown(e, 'qty')} min="1" className="w-[120px] bg-dark-input border border-dark-border rounded-2xl px-5 py-4 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-sans text-2xl font-black text-center text-white placeholder-gray-600" placeholder="1" />
+                                        <button onClick={addRecord} className="flex-1 bg-brand-blue hover:bg-blue-600 text-white font-bold py-4 px-4 rounded-2xl transition-all text-sm uppercase tracking-widest shadow-lg shadow-brand-blue/20 flex items-center justify-center gap-2">
+                                            <PackageCheck size={20} /> Ingresar
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
                         </div>
-                    )}
 
-                </div>
+                        {/* Right Panel: Historial Reciente (Dark Terminal Grid) */}
+                        <div className="flex-1 flex flex-col bg-[#0F1014] border border-dark-border rounded-3xl relative overflow-hidden min-h-[500px]">
+
+                            {/* Header (Top) */}
+                            <div className="flex justify-between items-center px-8 py-6 border-b border-dark-border bg-[#0A0A0B]/50">
+                                <h2 className="text-white font-black tracking-[0.2em] text-sm flex items-center gap-3">
+                                    <History size={18} className="text-gray-500" /> HISTORIAL RECIENTE
+                                </h2>
+                                <button onClick={() => setDeleteConfirm({ id: 'all', type: 'session' })} className="text-gray-600 hover:text-red-500 transition-colors p-2 bg-dark-input rounded-xl hover:bg-red-500/10">
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+
+                            {/* Dynamic List */}
+                            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 pb-32">
+                                {groupedRecords.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center opacity-40">
+                                        <Box size={48} className="text-gray-600 mb-4" />
+                                        <span className="font-bold tracking-widest uppercase text-sm text-gray-500">Sesión Vacía</span>
+                                    </div>
+                                ) : (
+                                    groupedRecords.map((group, groupIndex) => (
+                                        <div key={group.UPC} className={`bg-transparent border rounded-2xl p-5 md:p-6 flex flex-col relative overflow-hidden transition-all duration-300 ${groupIndex === 0 ? 'border-brand-blue/30 bg-brand-blue/5' : 'border-[#18181A] opacity-70 hover:opacity-100'}`}>
+
+                                            {/* Borde luminiscente izquierdo (Solo en el producto activo/más reciente) */}
+                                            {groupIndex === 0 && (
+                                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-blue shadow-[0_0_15px_rgba(37,99,235,1)]"></div>
+                                            )}
+
+                                            {/* Titulo y Badge */}
+                                            <div className="flex justify-between items-start mb-5 pl-2">
+                                                <div className="flex flex-col pr-4">
+                                                    <h3 className="text-white font-black text-sm md:text-base uppercase tracking-widest leading-tight">{group.Nombre}</h3>
+                                                    <span className="text-gray-500 font-bold text-[10px] tracking-widest uppercase mt-1 flex gap-2">
+                                                        <span>{group.UPC}</span>
+                                                        <span className="opacity-50">#{groupedRecords.length - groupIndex}</span>
+                                                    </span>
+
+                                                    {/* Costo Maestro Retroactivo */}
+                                                    <div className="mt-3 flex flex-col gap-1.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="bg-[#0A0A0B] border border-[#18181A] px-3 py-1.5 rounded-lg flex items-center gap-2">
+                                                                <DollarSign size={12} className="text-gray-500" />
+                                                                <input
+                                                                    type="number"
+                                                                    placeholder="0"
+                                                                    className="bg-transparent text-emerald-500 font-mono font-bold outline-none w-[100px] text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                    value={group.Records[0]?.CostoUnitario === 0 && !group.Records[0].CostoTotalCOP ? "" : group.Records[0]?.CostoUnitario}
+                                                                    onChange={(e) => handleUpdateUpcCost(group.UPC, e.target.value)}
+                                                                />
+                                                            </div>
+                                                            <span className="text-[9px] uppercase font-bold tracking-widest text-gray-600 border border-gray-800 px-2 py-1 rounded">Costo Unit / {group.Records[0]?.Moneda || 'COP'}</span>
+                                                        </div>
+
+                                                        {/* UI Inteligencia de Precios (Fase 14) */}
+                                                        <div className="flex items-center gap-3 pl-1">
+                                                            {/* Equivalencia Directa a COP Oculta si ya es COP */}
+                                                            {(group.Records[0]?.Moneda === 'USD' && group.Records[0]?.CostoUnitario > 0) && (
+                                                                <span className="text-[10px] font-mono text-gray-500 font-medium">
+                                                                    ≈ {formatMoney((group.Records[0].CostoUnitario * (parseFloat(exchangeRate) || 1)), 'COP')}
+                                                                </span>
+                                                            )}
+
+                                                            {/* Fluctuación Histórica */}
+                                                            {(() => {
+                                                                const currentInputCost = Number(group.Records[0]?.CostoUnitario) || 0;
+                                                                const lastSavedCost = productDB[group.UPC]?.LastCost || 0;
+
+                                                                if (lastSavedCost === 0 || currentInputCost === 0) return null;
+
+                                                                const diff = currentInputCost - lastSavedCost;
+                                                                const pctChange = (diff / lastSavedCost) * 100;
+
+                                                                if (diff > 0) {
+                                                                    // Subió de precio (Alerta)
+                                                                    return (
+                                                                        <span className="text-[9px] font-bold tracking-widest uppercase flex items-center gap-1 text-red-400 bg-red-950/30 px-2 py-0.5 rounded">
+                                                                            Último: ${lastSavedCost} <ArrowUpRight size={10} strokeWidth={3} /> {pctChange.toFixed(0)}%
+                                                                        </span>
+                                                                    );
+                                                                } else if (diff < 0) {
+                                                                    // Bajó de precio (Ahorro)
+                                                                    return (
+                                                                        <span className="text-[9px] font-bold tracking-widest uppercase flex items-center gap-1 text-emerald-400 bg-emerald-950/30 px-2 py-0.5 rounded">
+                                                                            Último: ${lastSavedCost} <ArrowDownRight size={10} strokeWidth={3} /> {Math.abs(pctChange).toFixed(0)}%
+                                                                        </span>
+                                                                    );
+                                                                } else {
+                                                                    // Sin cambio
+                                                                    return (
+                                                                        <span className="text-[9px] font-bold tracking-widest uppercase flex items-center gap-1 text-gray-500 bg-gray-900 px-2 py-0.5 rounded">
+                                                                            Último: ${lastSavedCost} (-)
+                                                                        </span>
+                                                                    );
+                                                                }
+                                                            })()}
+                                                        </div>
+                                                    </div>
+
+                                                </div>
+
+                                                {/* Total Units Badge Neon */}
+                                                <div className={`rounded-2xl px-5 py-3 flex flex-col items-center justify-center flex-shrink-0 ${groupIndex === 0 ? 'bg-brand-blue shadow-[0_0_25px_rgba(37,99,235,0.4)]' : 'bg-dark-input border border-dark-border'}`}>
+                                                    <span className={`font-black text-2xl leading-none ${groupIndex === 0 ? 'text-white' : 'text-gray-300'}`}>{group.TotalUnidades}</span>
+                                                    <span className={`font-bold text-[9px] uppercase tracking-widest mt-1 ${groupIndex === 0 ? 'text-white/80' : 'text-gray-600'}`}>UND</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Seriales Grid (The Core Clone Feature) */}
+                                            <div className="flex flex-wrap gap-2 pl-2">
+                                                {group.Records.map((r, itemIndex) => {
+                                                    const isMostRecentScanned = groupIndex === 0 && itemIndex === 0;
+                                                    return (
+                                                        <div key={r.ID} className={`group/tag flex items-center gap-3 px-3.5 py-2.5 rounded-xl border transition-all duration-300 ${isMostRecentScanned ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.6)] border-transparent' : 'bg-[#0A0A0B] border-dark-border text-gray-400 hover:border-gray-700 hover:text-gray-200'}`}>
+                                                            <span className="font-mono text-[10px] font-bold tracking-widest uppercase">
+                                                                {r.Tipo === 'SERIAL' ? r.Serial : `MASIVO x${r.Cantidad}`}
+                                                            </span>
+                                                            <button onClick={(e) => handleDeleteRecord(r.ID, e)} className={`transition-opacity ${isMostRecentScanned ? 'opacity-80 hover:opacity-100 hover:text-white' : 'opacity-0 group-hover/tag:opacity-100 hover:text-red-400'}`}>
+                                                                <X size={12} strokeWidth={3} />
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            {/* BOTÓN MÁGICO 'GUARDAR' */}
+                            {records.length > 0 && (
+                                <div className="absolute bottom-6 right-6 md:bottom-8 md:right-8 z-30 animate-in slide-in-from-bottom-4 zoom-in-95 duration-300">
+                                    <button onClick={saveCurrentSessionToHistory} className="bg-black hover:bg-white hover:text-black text-white px-8 py-5 rounded-3xl font-black uppercase tracking-[0.2em] text-xs flex items-center gap-3 shadow-[0_20px_40px_rgba(0,0,0,0.8)] border border-gray-800 transition-all active:scale-95 group">
+                                        <Save size={18} className="group-hover:text-black transition-colors" /> GUARDAR
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </>
+                )}
             </main>
-
         </div>
     );
 }
