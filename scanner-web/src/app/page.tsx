@@ -957,7 +957,12 @@ export default function InventoryScannerApp() {
                                             <div className="flex flex-col">
                                                 <span className="text-gray-600 text-[10px] uppercase font-bold tracking-widest">Valor ({session.monedaBase})</span>
                                                 <span className="text-emerald-400 font-mono font-bold">
-                                                    {formatMoney(session.monedaBase === 'COP' ? session.costoTotalCOP : (session.costoTotalCOP / parseFloat(exchangeRate)), session.monedaBase)}
+                                                    {formatMoney(
+                                                        session.monedaBase === 'COP'
+                                                            ? session.costoTotalCOP
+                                                            : session.records.reduce((acc, r) => acc + (r.Moneda === 'USD' ? (r.CostoUnitario * r.Cantidad) : (r.TasaCambio > 0 ? r.CostoTotalCOP / r.TasaCambio : 0)), 0),
+                                                        session.monedaBase
+                                                    )}
                                                 </span>
                                             </div>
                                         </div>
