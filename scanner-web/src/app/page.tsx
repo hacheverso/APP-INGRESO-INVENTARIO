@@ -839,13 +839,10 @@ export default function InventoryScannerApp() {
                 </div>
             )}
 
-            {/* Header Global (Dark Terminal UI) - Con espacio superior para MacOS Window Controls */}
-            <header className="bg-dark-bg px-6 lg:px-8 pt-12 pb-5 flex flex-col xl:flex-row justify-between items-center gap-4 z-10 transition-colors duration-300">
-                {/* Logo & Título Izquierdo */}
-                <div className="flex items-center gap-4 cursor-pointer" onClick={() => setView('SCANNER')}>
-                    <button className="p-2 bg-dark-input hover:bg-gray-800 rounded-lg text-gray-400 transition-colors">
-                        <ArrowLeft size={20} />
-                    </button>
+            {/* Header Global (Dark Terminal UI) - Single Row Layout */}
+            <header className="bg-dark-bg px-6 lg:px-8 py-5 mt-6 flex items-center justify-between z-10 transition-colors duration-300 gap-6 overflow-x-auto custom-scrollbar">
+                {/* Zona Izquierda: Identidad */}
+                <div className="flex items-center gap-4 cursor-pointer min-w-max" onClick={() => setView('SCANNER')}>
                     <div className="flex items-center gap-3">
                         <Box size={28} className="text-brand-blue" />
                         <div className="flex flex-col">
@@ -858,20 +855,11 @@ export default function InventoryScannerApp() {
                     </div>
                 </div>
 
-                {/* Navbar Configurations (Derecha) */}
-                <div className="flex flex-wrap items-center justify-end gap-3 z-20 relative">
-                    {/* Botón Navegar a Historial */}
-                    <button onClick={() => setView(view === 'SCANNER' ? 'HISTORY' : 'SCANNER')} className="flex items-center gap-2 bg-dark-input hover:bg-[#151E32] text-brand-blue hover:text-white px-4 py-2 rounded-xl border border-brand-blue/30 transition-all font-bold tracking-wider text-xs uppercase">
-                        {view === 'SCANNER' ? <><History size={16} /> Historial</> : <><ScanLine size={16} /> Escáner</>}
-                    </button>
-                    {/* Boton Importar CSV */}
-                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 bg-dark-input hover:bg-[#151E32] text-gray-400 hover:text-brand-blue px-4 py-2 rounded-xl border border-dark-border hover:border-brand-blue/30 transition-all font-bold tracking-wider text-xs uppercase" title="Cargar Base de Datos Local UI CSV">
-                        <UploadCloud size={16} /> Importar DB
-                    </button>
-
+                {/* Zona Central: Contexto del Lote */}
+                <div className="flex items-center gap-3 flex-1 justify-center min-w-max">
                     {/* Batch Name Pill */}
                     <div className="flex items-center bg-dark-input px-4 py-2 rounded-xl border border-dark-border">
-                        <input type="text" value={batchName} onChange={(e) => setBatchName(e.target.value)} className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[150px]" placeholder="Nombre del Lote..." />
+                        <input type="text" value={batchName} onChange={(e) => setBatchName(e.target.value)} className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[140px] md:w-[150px]" placeholder="Nombre del Lote..." />
                         <ChevronDown size={14} className="text-gray-500 ml-1" />
                     </div>
 
@@ -882,7 +870,7 @@ export default function InventoryScannerApp() {
                             type="text"
                             value={proveedor}
                             onChange={(e) => setProveedor(e.target.value)}
-                            className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[160px]"
+                            className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[150px] md:w-[160px]"
                             placeholder="Proveedor o Cliente..."
                         />
                         <datalist id="proveedores-list">
@@ -890,26 +878,39 @@ export default function InventoryScannerApp() {
                         </datalist>
                         <ChevronDown size={14} className="text-gray-500 ml-1" />
                     </div>
+                </div>
 
-                    {/* Speech Speed Toggle */}
-                    <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 1.5 : prev === 1.5 ? 2.0 : 1.0)} className={`px-3 py-2 border rounded-xl transition-colors bg-[#151E32] border-brand-blue/30 text-brand-blue hover:bg-brand-blue/20 flex items-center justify-center font-bold text-xs`} title="Velocidad de Voz">
-                        {speechRate}x
-                    </button>
-
-                    {/* Volume Pill */}
-                    <button onClick={() => setIsAudioEnabled(!isAudioEnabled)} className={`p-2 border rounded-xl transition-colors ${isAudioEnabled ? 'bg-[#151E32] border-brand-blue/30 text-brand-blue hover:bg-brand-blue/20' : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-400'}`} title={isAudioEnabled ? "Silenciar Asistente de Voz" : "Activar Asistente de Voz"}>
-                        {isAudioEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-                    </button>
-
-                    {/* Currency Toggle Pill */}
-                    <div className="flex items-center bg-dark-input p-1 rounded-xl border border-dark-border">
-                        <button onClick={() => setCurrency('USD')} className={`px-3 py-1.5 text-[10px] md:text-xs font-bold rounded-lg transition-colors ${currency === 'USD' ? 'bg-[#1b5e20] text-emerald-400' : 'text-gray-500 hover:text-gray-300'}`}>USD</button>
-                        <button onClick={() => setCurrency('COP')} className={`px-3 py-1.5 text-[10px] md:text-xs font-bold rounded-lg transition-colors ${currency === 'COP' ? 'bg-brand-blue text-white' : 'text-gray-500 hover:text-gray-300'}`}>COP</button>
+                {/* Zona Derecha: Finanzas y Herramientas Secundarias */}
+                <div className="flex items-center justify-end gap-3 min-w-max z-20 relative">
+                    {/* Bloque Financiero Unificado (Moneda + TRM) */}
+                    <div className="flex items-center gap-1.5 bg-dark-input p-1 rounded-xl border border-dark-border">
+                        <div className="flex items-center">
+                            <button onClick={() => setCurrency('USD')} className={`px-3 py-1.5 text-[10px] md:text-xs font-bold rounded-lg transition-colors ${currency === 'USD' ? 'bg-[#1b5e20] text-emerald-400' : 'text-gray-500 hover:text-gray-300'}`}>USD</button>
+                            <button onClick={() => setCurrency('COP')} className={`px-3 py-1.5 text-[10px] md:text-xs font-bold rounded-lg transition-colors ${currency === 'COP' ? 'bg-brand-blue text-white' : 'text-gray-500 hover:text-gray-300'}`}>COP</button>
+                        </div>
+                        <div className={`flex items-center transition-opacity duration-300 ${currency === 'USD' ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
+                            <input type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} onFocus={(e) => e.target.select()} disabled={currency === 'COP'} className="bg-black/20 px-2 py-1.5 rounded-lg text-xs font-bold text-gray-300 outline-none w-[60px] text-center" placeholder="TRM" />
+                        </div>
                     </div>
 
-                    {/* TRM Box */}
-                    <div className={`flex items-center bg-dark-input px-3 py-2.5 rounded-xl border border-dark-border transition-opacity duration-300 ${currency === 'USD' ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
-                        <input type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} onFocus={(e) => e.target.select()} disabled={currency === 'COP'} className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[60px] text-center" placeholder="TRM" />
+                    {/* Herramientas Secundarias (Iconos) */}
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => fileInputRef.current?.click()} className="p-2.5 bg-dark-input hover:bg-[#151E32] text-gray-400 hover:text-brand-blue rounded-xl border border-dark-border hover:border-brand-blue/30 transition-all font-bold" title="Importar Base de Datos">
+                            <UploadCloud size={16} />
+                        </button>
+                        <button onClick={() => setView(view === 'SCANNER' ? 'HISTORY' : 'SCANNER')} className="p-2.5 bg-dark-input hover:bg-[#151E32] text-brand-blue rounded-xl border border-brand-blue/30 transition-all font-bold" title={view === 'SCANNER' ? 'Ver Historial' : 'Volver al Escáner'}>
+                            {view === 'SCANNER' ? <History size={16} /> : <ScanLine size={16} />}
+                        </button>
+                    </div>
+
+                    {/* Controles de Audio */}
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 1.5 : prev === 1.5 ? 2.0 : 1.0)} className={`w-[36px] h-[36px] border rounded-xl transition-colors bg-[#151E32] border-brand-blue/30 text-brand-blue hover:bg-brand-blue/20 flex items-center justify-center font-bold text-xs`} title="Velocidad de Voz">
+                            {speechRate}x
+                        </button>
+                        <button onClick={() => setIsAudioEnabled(!isAudioEnabled)} className={`w-[36px] h-[36px] border rounded-xl transition-colors flex items-center justify-center ${isAudioEnabled ? 'bg-[#151E32] border-brand-blue/30 text-brand-blue hover:bg-brand-blue/20' : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-400'}`} title={isAudioEnabled ? "Silenciar Asistente" : "Activar Asistente"}>
+                            {isAudioEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                        </button>
                     </div>
                 </div>
             </header>
