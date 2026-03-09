@@ -916,9 +916,51 @@ export default function InventoryScannerApp() {
                                 <span className="absolute right-4 top-[38px] text-[9px] text-gray-500 font-bold uppercase tracking-widest hidden md:block pointer-events-none">Auto SKU ✓</span>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><label className={labelClass}>Referencia / Auto SKU</label><input type="text" value={newProductForm.SKU} onChange={e => setNewProductForm({ ...newProductForm, SKU: e.target.value })} onKeyDown={e => handleKeyDown(e, 'modal_submit')} className={`${inputClass} font-mono text-sm tracking-widest text-brand-blue uppercase`} placeholder="Generado Aut..." /></div>
-                                <div><label className={labelClass}>URL de Imagen</label><input type="text" value={newProductForm.IMAGEN} onChange={e => setNewProductForm({ ...newProductForm, IMAGEN: e.target.value })} onKeyDown={e => handleKeyDown(e, 'modal_submit')} className={inputClass} placeholder="https://..." /></div>
+                                <div className="flex flex-col">
+                                    <label className={labelClass}>URL de Imagen</label>
+                                    <div className="flex gap-2 relative">
+                                        <input type="text" value={newProductForm.IMAGEN} onChange={e => setNewProductForm({ ...newProductForm, IMAGEN: e.target.value })} onKeyDown={e => handleKeyDown(e, 'modal_submit')} className={`${inputClass} flex-1`} placeholder="https://..." />
+
+                                        <button
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                if (!newProductForm.NOMBRE) {
+                                                    showToast("Escribe un nombre primero", "error");
+                                                    return;
+                                                }
+                                                const query = encodeURIComponent(newProductForm.NOMBRE);
+                                                window.open(`https://www.google.com/search?tbm=isch&q=${query}`, '_blank');
+                                            }}
+                                            className="bg-brand-blue hover:bg-brand-blue/80 text-white px-3 flex items-center justify-center rounded-xl transition-colors tooltip-trigger"
+                                            title="Buscar en Google Imágenes"
+                                        >
+                                            <ImageIcon size={18} />
+                                        </button>
+
+                                        <button
+                                            onClick={async (e) => {
+                                                e.preventDefault();
+                                                try {
+                                                    const text = await navigator.clipboard.readText();
+                                                    if (text && text.startsWith('http')) {
+                                                        setNewProductForm(prev => ({ ...prev, IMAGEN: text }));
+                                                        showToast("URL pegada", "success");
+                                                    } else {
+                                                        showToast("No hay una URL válida en el portapapeles", "error");
+                                                    }
+                                                } catch (err) {
+                                                    showToast("Error al leer portapapeles", "error");
+                                                }
+                                            }}
+                                            className="bg-dark-input border border-dark-border hover:bg-white/10 text-gray-400 px-3 flex items-center justify-center rounded-xl transition-colors tooltip-trigger"
+                                            title="Pegar URL directamente"
+                                        >
+                                            <FileDown size={18} />
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div className="p-4 bg-gray-50 dark:bg-dark-input flex justify-end gap-3 border-t dark:border-dark-border"><button onClick={() => { setShowNewProductModal(false); upcRef.current?.select(); }} className="px-5 py-2 font-bold text-gray-600 dark:text-gray-400">Cancelar</button><button onClick={handleSaveNewProduct} className="flex gap-2 px-6 py-2 bg-brand-green text-white font-bold rounded-lg"><PlusCircle size={18} /> Guardar</button></div>
