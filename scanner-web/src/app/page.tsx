@@ -668,6 +668,7 @@ export default function InventoryScannerApp() {
 
         setSavedSessions([newSession, ...savedSessions]);
         setRecords([]); // Vaciamos la sesión activa
+        setView('HISTORY'); // Navegar automáticamente al Historial al guardar
         showToast("Sesión Guardada en el Historial", "success");
     };
 
@@ -897,13 +898,13 @@ export default function InventoryScannerApp() {
                         </div>
                     </div>
 
-                    {/* Herramientas Secundarias (Iconos) */}
+                    {/* Herramientas Secundarias (Iconos y Botón Principal Historial) */}
                     <div className="flex items-center gap-2">
                         <button onClick={() => fileInputRef.current?.click()} className="p-2.5 bg-dark-input hover:bg-[#151E32] text-gray-400 hover:text-brand-blue rounded-xl border border-dark-border hover:border-brand-blue/30 transition-all font-bold" title="Importar Base de Datos">
                             <UploadCloud size={16} />
                         </button>
-                        <button onClick={() => setView(view === 'SCANNER' ? 'HISTORY' : 'SCANNER')} className="p-2.5 bg-dark-input hover:bg-[#151E32] text-brand-blue rounded-xl border border-brand-blue/30 transition-all font-bold" title={view === 'SCANNER' ? 'Ver Historial' : 'Volver al Escáner'}>
-                            {view === 'SCANNER' ? <History size={16} /> : <ScanLine size={16} />}
+                        <button onClick={() => setView(view === 'SCANNER' ? 'HISTORY' : 'SCANNER')} className="flex items-center gap-2 px-4 py-2 bg-brand-blue/10 hover:bg-brand-blue/20 text-brand-blue rounded-xl border border-brand-blue/40 transition-all font-black text-xs uppercase tracking-wider shadow-[0_0_15px_rgba(37,99,235,0.15)]" title={view === 'SCANNER' ? 'Ver Historial' : 'Volver al Escáner'}>
+                            {view === 'SCANNER' ? <><History size={16} /> Historial</> : <><ScanLine size={16} /> Escáner</>}
                         </button>
                     </div>
 
