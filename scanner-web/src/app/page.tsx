@@ -420,7 +420,7 @@ export default function InventoryScannerApp() {
             return;
         }
 
-        const newProd: Product = { UPC, NOMBRE, SKU, IMAGEN, LastCost: 0 };
+        const newProd: Product = { UPC, NOMBRE: NOMBRE.trim(), SKU: SKU.trim(), IMAGEN, LastCost: 0 };
         setProductDB(prev => ({ ...prev, [UPC]: newProd }));
         setMatchedProduct(newProd);
         speakProduct(newProd.NOMBRE);
@@ -432,6 +432,50 @@ export default function InventoryScannerApp() {
 
         if (mode === 'UPC_SERIAL') serialRef.current?.focus();
         else qtyRef.current?.focus();
+    };
+
+    // Helper: Generador Inteligente de SKU
+    const generateSKU = (name: string) => {
+        if (!name) return "";
+        let upperName = name.toUpperCase();
+        let isUsed = upperName.includes("USADO") || upperName.includes("OPEN BOX");
+
+        // Limpiar flags para no ponerlos a la mitad
+        let cleanName = upperName
+            .replace(/USADO/g, '')
+            .replace(/OPEN BOX/g, '')
+            .trim();
+
+        // Diccionario de abreviaciones comunes
+        const dict: Record<string, string> = {
+            "APPLE": "APL", "IPHONE": "IPH", "MACBOOK": "MAC", "AMAZON": "AMZ", "ALEXA": "ALX", "ECHO": "ECHP", "LAVANDA": "LVN",
+            "TITANIUM": "TI", "NATURAL": "NAT", "TRANSITIONS": "TRNS", "GRAY": "GRY", "SHINY": "SH", "SKYLER": "SKYL",
+            "BLACK": "BLK", "WHITE": "WHT", "BLUE": "BLU", "GREEN": "GRN", "PRO": "PRO", "MAX": "MAX", "PLUS": "PLS"
+        };
+
+        // Extraer palabras (separadas por espacio o slash)
+        let words = cleanName.split(/[\s/]+/).filter(w => w.length > 0);
+
+        let skuParts = words.map(w => {
+            // Si existe en nuestro diccionario exacto
+            if (dict[w]) return dict[w];
+            // Si empieza por número (ej: 15, 256GB, 84%, 869) lo dejamos tal cual
+            if (w.match(/^[0-9]+[A-Z]*%?$/)) return w;
+            // Palabras completas comunes que el usuario dejó intactas en el ejemplo
+            if (w.length <= 3) return w;
+            if (w === "CICLOS" || w === "SAPPHIRE" || w === "CHALKY" || w === "META") return w;
+
+            // Si es 'IPHONE15' pegado, intentar separarlo (caso borde) o dejarlo
+            if (w.startsWith("IPHONE")) return w.replace("IPHONE", "IPH");
+
+            // Abreviador Genérico Avanzado (Deja la 1ra letra + siguientes 2 o 3 consonantes)
+            let consonants = w.substring(1).replace(/[AEIOUÁÉÍÓÚ]/g, '');
+            let abv = w[0] + consonants;
+            return abv.substring(0, 4); // max 4 caracteres por palabra desconocida
+        });
+
+        const suffix = isUsed ? "-U" : "-N";
+        return skuParts.join('-') + suffix;
     };
 
     const addRecord = () => {
@@ -844,9 +888,36 @@ export default function InventoryScannerApp() {
                         <div className="p-6 flex flex-col gap-4">
                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Ingresa los datos para que el sistema aprenda este código.</p>
                             <div><label className={labelClass}>UPC</label><input type="text" value={newProductForm.UPC} disabled className={`${inputClass} bg-gray-100 dark:bg-dark-bg cursor-not-allowed`} /></div>
-                            <div><label className={labelClass}>Nombre del Producto *</label><input ref={modalNameRef} type="text" value={newProductForm.NOMBRE} onChange={e => setNewProductForm({ ...newProductForm, NOMBRE: e.target.value })} onKeyDown={e => handleKeyDown(e, 'modal_submit')} className={inputClass} placeholder="Descripción exacta..." /></div>
+
+                            <div className="relative">
+                                <label className={labelClass}>Nombre del Producto *</label>
+                                <input
+                                    ref={modalNameRef}
+                                    list="existing-product-names"
+                                    type="text"
+                                    value={newProductForm.NOMBRE}
+                                    onChange={e => {
+                                        const newName = e.target.value;
+                                        setNewProductForm(prev => ({
+                                            ...prev,
+                                            NOMBRE: newName,
+                                            SKU: generateSKU(newName) // Auto-generar SKU al teclear
+                                        }));
+                                    }}
+                                    onKeyDown={e => handleKeyDown(e, 'modal_submit')}
+                                    className={inputClass}
+                                    placeholder="Descripción exacta..."
+                                />
+                                <datalist id="existing-product-names">
+                                    {Array.from(new Set(Object.values(productDB).map(p => p.NOMBRE))).sort().map((name, idx) => (
+                                        <option key={idx} value={name} />
+                                    ))}
+                                </datalist>
+                                <span className="absolute right-4 top-[38px] text-[9px] text-gray-500 font-bold uppercase tracking-widest hidden md:block pointer-events-none">Auto SKU ✓</span>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className={labelClass}>Referencia / SKU</label><input type="text" value={newProductForm.SKU} onChange={e => setNewProductForm({ ...newProductForm, SKU: e.target.value })} onKeyDown={e => handleKeyDown(e, 'modal_submit')} className={inputClass} placeholder="Opcional..." /></div>
+                                <div><label className={labelClass}>Referencia / Auto SKU</label><input type="text" value={newProductForm.SKU} onChange={e => setNewProductForm({ ...newProductForm, SKU: e.target.value })} onKeyDown={e => handleKeyDown(e, 'modal_submit')} className={`${inputClass} font-mono text-sm tracking-widest text-brand-blue uppercase`} placeholder="Generado Aut..." /></div>
                                 <div><label className={labelClass}>URL de Imagen</label><input type="text" value={newProductForm.IMAGEN} onChange={e => setNewProductForm({ ...newProductForm, IMAGEN: e.target.value })} onKeyDown={e => handleKeyDown(e, 'modal_submit')} className={inputClass} placeholder="https://..." /></div>
                             </div>
                         </div>
