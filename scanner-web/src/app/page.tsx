@@ -880,7 +880,7 @@ export default function InventoryScannerApp() {
             {/* Modal: Agregar Producto Nuevo */}
             {showNewProductModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+                    <div className="bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="px-6 py-4 border-b border-gray-100 dark:border-dark-border flex justify-between items-center bg-brand-blue text-white">
                             <div className="flex items-center gap-2"><AlertTriangle size={20} className="text-yellow-400" /><h3 className="font-bold text-lg tracking-wide">UPC No Registrado</h3></div>
                             <button onClick={() => { setShowNewProductModal(false); upcRef.current?.select(); }} className="text-white/60 hover:text-white transition-colors"><X size={24} /></button>
@@ -905,7 +905,7 @@ export default function InventoryScannerApp() {
                                         }));
                                     }}
                                     onKeyDown={e => handleKeyDown(e, 'modal_submit')}
-                                    className={inputClass}
+                                    className={`${inputClass} pr-24`}
                                     placeholder="Descripción exacta..."
                                 />
                                 <datalist id="existing-product-names">
