@@ -685,8 +685,7 @@ export default function InventoryScannerApp() {
         setCurrency(session.monedaBase);
         setView('SCANNER');
 
-        // Remove the session from history since we are actively editing it again (it will be saved as new when finished)
-        setSavedSessions(prev => prev.filter(s => s.id !== session.id));
+        // The session is kept in history. If the user edits and clicks save again, it will duplicate it as a new distinct session, which is safer than deleting the original.
         showToast(`Sesión reabierta: ${session.lote}`, "info");
     };
 
