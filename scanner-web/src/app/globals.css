@@ -33,3 +33,17 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-[#424450];
 }
+
+/* Ocultar flechas (spinners) de los inputs de tipo number globalmente */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type=number] {
+  -moz-appearance: textfield;
+  /* Para Firefox */
+  appearance: textfield;
+  /* Estandar */
+}
