@@ -1133,16 +1133,16 @@ export default function InventoryScannerApp() {
                                                     <div className="mt-3 flex flex-col gap-1.5">
                                                         <div className="flex items-center gap-2">
                                                             <div className="bg-[#0A0A0B] border border-[#18181A] px-3 py-1.5 rounded-lg flex items-center gap-2">
-                                                                <DollarSign size={12} className="text-gray-500" />
+                                                                <DollarSign size={16} className="text-gray-500" />
                                                                 <input
                                                                     type="number"
                                                                     placeholder="0"
-                                                                    className="bg-transparent text-emerald-500 font-mono font-bold outline-none w-[100px] text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                    className="bg-transparent text-emerald-500 font-mono font-black outline-none w-[120px] text-base md:text-lg [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                                     value={group.Records[0]?.CostoUnitario === 0 && !group.Records[0].CostoTotalCOP ? "" : group.Records[0]?.CostoUnitario}
                                                                     onChange={(e) => handleUpdateUpcCost(group.UPC, e.target.value)}
                                                                 />
                                                             </div>
-                                                            <span className="text-[9px] uppercase font-bold tracking-widest text-gray-600 border border-gray-800 px-2 py-1 rounded">Costo Unit / {group.Records[0]?.Moneda || 'COP'}</span>
+                                                            <span className="text-[10px] uppercase font-bold tracking-widest text-gray-600 border border-gray-800 px-3 py-1.5 rounded">Costo Unit / {group.Records[0]?.Moneda || 'COP'}</span>
                                                         </div>
 
                                                         {/* UI Inteligencia de Precios (Fase 14) */}
@@ -1200,16 +1200,16 @@ export default function InventoryScannerApp() {
                                             </div>
 
                                             {/* Seriales Grid (The Core Clone Feature) */}
-                                            <div className="flex flex-wrap gap-2 pl-2">
+                                            <div className="flex flex-wrap gap-2 pl-2 mt-2">
                                                 {group.Records.map((r, itemIndex) => {
                                                     const isMostRecentScanned = groupIndex === 0 && itemIndex === 0;
                                                     return (
-                                                        <div key={r.ID} className={`group/tag flex items-center gap-3 px-3.5 py-2.5 rounded-xl border transition-all duration-300 ${isMostRecentScanned ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.6)] border-transparent' : 'bg-[#0A0A0B] border-dark-border text-gray-400 hover:border-gray-700 hover:text-gray-200'}`}>
-                                                            <span className="font-mono text-[10px] font-bold tracking-widest uppercase">
+                                                        <div key={r.ID} className={`group/tag flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all duration-300 ${isMostRecentScanned ? 'bg-brand-blue text-white shadow-[0_0_20px_rgba(37,99,235,0.4)] border-transparent scale-[1.02]' : 'bg-[#0A0A0B] border-dark-border text-gray-400 hover:border-gray-700 hover:text-gray-200'}`}>
+                                                            <span className="font-mono text-xs font-bold tracking-widest uppercase">
                                                                 {r.Tipo === 'SERIAL' ? r.Serial : `MASIVO x${r.Cantidad}`}
                                                             </span>
-                                                            <button onClick={(e) => handleDeleteRecord(r.ID, e)} className={`transition-opacity ${isMostRecentScanned ? 'opacity-80 hover:opacity-100 hover:text-white' : 'opacity-0 group-hover/tag:opacity-100 hover:text-red-400'}`}>
-                                                                <X size={12} strokeWidth={3} />
+                                                            <button onClick={(e) => handleDeleteRecord(r.ID, e)} className={`transition-opacity ${isMostRecentScanned ? 'opacity-100 text-white/70 hover:text-white' : 'opacity-0 group-hover/tag:opacity-100 hover:text-red-400'}`}>
+                                                                <X size={14} strokeWidth={3} />
                                                             </button>
                                                         </div>
                                                     );
