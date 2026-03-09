@@ -1,0 +1,49 @@
+
+> scanner-web@0.1.0 build:app
+> npm run build:web && electron-builder build --macos
+
+
+> scanner-web@0.1.0 build:web
+> next build
+
+▲ Next.js 16.1.6 (Turbopack)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 841.2ms
+  Running TypeScript ...
+  Collecting page data using 9 workers ...
+  Generating static pages using 9 workers (0/3) ...
+✓ Generating static pages using 9 workers (3/3) in 110.4ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+└ ○ /_not-found
+
+
+○  (Static)  prerendered as static content
+
+  • electron-builder  version=26.8.1 os=25.4.0
+  • loaded configuration  file=package.json ("build" field)
+  • description is missed in the package.json  appPackageFile=/Users/hache/INGRESO_MERCANCIA.../scanner-web/package.json
+  • author is missed in the package.json  appPackageFile=/Users/hache/INGRESO_MERCANCIA.../scanner-web/package.json
+  • executing @electron/rebuild  electronVersion=40.8.0 arch=arm64 buildFromSource=false workspaceRoot=/Users/hache/INGRESO_MERCANCIA.../scanner-web projectDir=./ appDir=./
+  • installing native dependencies  arch=arm64
+  • completed installing native dependencies
+  • packaging       platform=darwin arch=arm64 electron=40.8.0 appOutDir=dist/mac-arm64
+  • searching for node modules  pm=npm searchDir=/Users/hache/INGRESO_MERCANCIA.../scanner-web
+(node:22122) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+  • duplicate dependency references  dependencies=["@emnapi/wasi-threads@1.1.0","@emnapi/core@1.8.1","@emnapi/runtime@1.8.1","@tybys/wasm-util@0.10.1","react-dom@19.2.3"]
+  • default Electron icon is used  reason=application icon is not set
+  ⨯ Application entry file "main.js" in the "/Users/hache/INGRESO_MERCANCIA.../scanner-web/dist/mac-arm64/InventoryScanner.app/Contents/Resources/app.asar" is corrupted: Error: "main.js" was not found in this archive  failedTask=build stackTrace=Error: Application entry file "main.js" in the "/Users/hache/INGRESO_MERCANCIA.../scanner-web/dist/mac-arm64/InventoryScanner.app/Contents/Resources/app.asar" is corrupted: Error: "main.js" was not found in this archive
+    at error (/Users/hache/INGRESO_MERCANCIA.../scanner-web/node_modules/app-builder-lib/src/asar/asarFileChecker.ts:6:12)
+    at checkFileInArchive (/Users/hache/INGRESO_MERCANCIA.../scanner-web/node_modules/app-builder-lib/src/asar/asarFileChecker.ts:15:11)
+    at MacPackager.checkFileInPackage (/Users/hache/INGRESO_MERCANCIA.../scanner-web/node_modules/app-builder-lib/src/platformPackager.ts:635:25)
+    at MacPackager.sanityCheckPackage (/Users/hache/INGRESO_MERCANCIA.../scanner-web/node_modules/app-builder-lib/src/platformPackager.ts:683:16)
+    at MacPackager.doPack (/Users/hache/INGRESO_MERCANCIA.../scanner-web/node_modules/app-builder-lib/src/platformPackager.ts:351:5)
+    at MacPackager.pack (/Users/hache/INGRESO_MERCANCIA.../scanner-web/node_modules/app-builder-lib/src/macPackager.ts:252:9)
+    at Packager.doBuild (/Users/hache/INGRESO_MERCANCIA.../scanner-web/node_modules/app-builder-lib/src/packager.ts:538:11)
+    at executeFinally (/Users/hache/INGRESO_MERCANCIA.../scanner-web/node_modules/builder-util/src/promise.ts:12:14)
+    at Packager.build (/Users/hache/INGRESO_MERCANCIA.../scanner-web/node_modules/app-builder-lib/src/packager.ts:458:31)
+    at executeFinally (/Users/hache/INGRESO_MERCANCIA.../scanner-web/node_modules/builder-util/src/promise.ts:12:14)
