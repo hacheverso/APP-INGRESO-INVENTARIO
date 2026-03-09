@@ -843,51 +843,51 @@ export default function InventoryScannerApp() {
                 {/* Navbar Configurations (Derecha) */}
                 <div className="flex flex-wrap items-center justify-end gap-3 z-20 relative">
                     {/* Boton Importar CSV */}
-                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 bg-dark-input hover:bg-[#151E32] text-gray-400 hover:text-brand-blue px-4 py-2 rounded-xl border border-dark-border hover:border-brand-blue/30 transition-all font-bold tracking-wider text-xs uppercase" title="Cargar Base de Datos Local UI CSV">
-                        <UploadCloud size={16} /> Importar DB
+                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 bg-dark-input hover:bg-[#151E32] text-gray-400 hover:text-brand-blue px-3 py-1.5 rounded-xl border border-dark-border hover:border-brand-blue/30 transition-all font-bold tracking-wider text-[10px] uppercase" title="Cargar Base de Datos Local UI CSV">
+                        <UploadCloud size={14} /> Importar DB
                     </button>
 
                     {/* Batch Name Pill */}
-                    <div className="flex items-center bg-dark-input px-4 py-2 rounded-xl border border-dark-border">
-                        <input type="text" value={batchName} onChange={(e) => setBatchName(e.target.value)} className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[160px]" placeholder="Nombre del Lote..." />
-                        <ChevronDown size={14} className="text-gray-500 ml-2" />
+                    <div className="flex items-center bg-dark-input px-3 py-1.5 rounded-xl border border-dark-border">
+                        <input type="text" value={batchName} onChange={(e) => setBatchName(e.target.value)} className="bg-transparent text-[11px] font-bold text-gray-300 outline-none w-[130px]" placeholder="Nombre del Lote..." />
+                        <ChevronDown size={12} className="text-gray-500 ml-1" />
                     </div>
 
                     {/* Provider Pill (Auto-feeding Datalist) */}
-                    <div className="flex items-center bg-dark-input px-4 py-2 rounded-xl border border-dark-border">
+                    <div className="flex items-center bg-dark-input px-3 py-1.5 rounded-xl border border-dark-border">
                         <input
                             list="proveedores-list"
                             type="text"
                             value={proveedor}
                             onChange={(e) => setProveedor(e.target.value)}
-                            className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[170px]"
+                            className="bg-transparent text-[11px] font-bold text-gray-300 outline-none w-[140px]"
                             placeholder="Proveedor o Cliente..."
                         />
                         <datalist id="proveedores-list">
                             {listaProveedores.map((prov, i) => <option key={i} value={prov} />)}
                         </datalist>
-                        <ChevronDown size={14} className="text-gray-500 ml-2" />
+                        <ChevronDown size={12} className="text-gray-500 ml-1" />
                     </div>
 
                     {/* Speech Speed Toggle */}
-                    <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 1.5 : prev === 1.5 ? 2.0 : 1.0)} className={`px-3 py-1.5 border rounded-xl transition-colors bg-[#151E32] border-brand-blue/30 text-brand-blue hover:bg-brand-blue/20 flex items-center justify-center font-bold text-xs`} title="Velocidad de Voz">
+                    <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 1.5 : prev === 1.5 ? 2.0 : 1.0)} className={`px-2 py-1 border rounded-xl transition-colors bg-[#151E32] border-brand-blue/30 text-brand-blue hover:bg-brand-blue/20 flex items-center justify-center font-bold text-[10px]`} title="Velocidad de Voz">
                         {speechRate}x
                     </button>
 
                     {/* Volume Pill */}
-                    <button onClick={() => setIsAudioEnabled(!isAudioEnabled)} className={`p-2.5 border rounded-xl transition-colors ${isAudioEnabled ? 'bg-[#151E32] border-brand-blue/30 text-brand-blue hover:bg-brand-blue/20' : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-400'}`} title={isAudioEnabled ? "Silenciar Asistente de Voz" : "Activar Asistente de Voz"}>
-                        {isAudioEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                    <button onClick={() => setIsAudioEnabled(!isAudioEnabled)} className={`p-1.5 border rounded-xl transition-colors ${isAudioEnabled ? 'bg-[#151E32] border-brand-blue/30 text-brand-blue hover:bg-brand-blue/20' : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-400'}`} title={isAudioEnabled ? "Silenciar Asistente de Voz" : "Activar Asistente de Voz"}>
+                        {isAudioEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
                     </button>
 
                     {/* Currency Toggle Pill */}
-                    <div className="flex items-center bg-dark-input p-1 rounded-xl border border-dark-border">
-                        <button onClick={() => setCurrency('USD')} className={`px-4 py-1.5 text-[10px] font-bold rounded-lg transition-colors ${currency === 'USD' ? 'bg-[#1b5e20] text-emerald-400' : 'text-gray-500 hover:text-gray-300'}`}>USD</button>
-                        <button onClick={() => setCurrency('COP')} className={`px-4 py-1.5 text-[10px] font-bold rounded-lg transition-colors ${currency === 'COP' ? 'bg-brand-blue text-white' : 'text-gray-500 hover:text-gray-300'}`}>COP</button>
+                    <div className="flex items-center bg-dark-input p-0.5 rounded-xl border border-dark-border">
+                        <button onClick={() => setCurrency('USD')} className={`px-2 py-1 text-[9px] font-bold rounded-lg transition-colors ${currency === 'USD' ? 'bg-[#1b5e20] text-emerald-400' : 'text-gray-500 hover:text-gray-300'}`}>USD</button>
+                        <button onClick={() => setCurrency('COP')} className={`px-2 py-1 text-[9px] font-bold rounded-lg transition-colors ${currency === 'COP' ? 'bg-brand-blue text-white' : 'text-gray-500 hover:text-gray-300'}`}>COP</button>
                     </div>
 
                     {/* TRM Box */}
-                    <div className={`flex items-center bg-dark-input px-4 py-2.5 rounded-xl border border-dark-border transition-opacity duration-300 ${currency === 'USD' ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
-                        <input type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} disabled={currency === 'COP'} className="bg-transparent text-sm font-bold text-gray-300 outline-none w-[60px] text-center" placeholder="TRM" />
+                    <div className={`flex items-center bg-dark-input px-2 py-1.5 rounded-xl border border-dark-border transition-opacity duration-300 ${currency === 'USD' ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
+                        <input type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} disabled={currency === 'COP'} className="bg-transparent text-[11px] font-bold text-gray-300 outline-none w-[45px] text-center" placeholder="TRM" />
                     </div>
                 </div>
             </header>
