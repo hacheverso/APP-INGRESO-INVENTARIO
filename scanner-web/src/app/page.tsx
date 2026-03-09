@@ -541,6 +541,15 @@ export default function InventoryScannerApp() {
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, field: string) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            setUpc("");
+            setMatchedProduct(null);
+            setKeepUpc(false);
+            upcRef.current?.focus();
+            return;
+        }
+
         if (e.key === 'Enter') {
             e.preventDefault();
             if (field === 'upc') processUpcScan();
@@ -1082,7 +1091,7 @@ export default function InventoryScannerApp() {
                                 {/* Bottom Label Absoluto */}
                                 <span className="absolute bottom-8 text-gray-600 font-bold tracking-[0.2em] uppercase text-[10px]">Paso 1: Identificar Producto</span>
 
-                                {/* Candado Fijo Esquina */}
+                                {/* Candado Fijo Esquina Derecha */}
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setKeepUpc(!keepUpc); }}
                                     className={`absolute top-6 right-6 p-3 rounded-xl transition-all flex items-center justify-center z-30 ${keepUpc ? 'bg-brand-blue text-white shadow-lg' : 'bg-black/20 text-gray-500 hover:text-gray-300'}`}
@@ -1090,6 +1099,17 @@ export default function InventoryScannerApp() {
                                 >
                                     {keepUpc ? <Lock size={16} /> : <Unlock size={16} />}
                                 </button>
+
+                                {/* Botón Borrar (ESC) Esquina Izquierda */}
+                                {upc && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setUpc(""); setMatchedProduct(null); setKeepUpc(false); upcRef.current?.focus(); }}
+                                        className="absolute top-6 left-6 p-3 rounded-xl transition-all flex items-center justify-center z-30 bg-black/20 text-gray-500 hover:text-red-400 hover:bg-black/40"
+                                        title="Borrar UPC (ESC)"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                )}
                             </div>
 
                             {/* Inputs Flotantes/Ocultos para Serial y QTY (Aparecen si Masivo o Serializado lo requiere) */}
