@@ -525,7 +525,8 @@ export default function InventoryScannerApp() {
             Moneda: currency,
             CostoUnitario: parsedCost,
             TasaCambio: currency === 'USD' ? parsedExRate : 1,
-            CostoTotalCOP: finalCostoTotalCOP
+            CostoTotalCOP: finalCostoTotalCOP,
+            Imagen: matchedProduct?.IMAGEN || ''
         };
 
         if (proveedor.trim() && !listaProveedores.includes(proveedor.trim())) {
@@ -1125,11 +1126,11 @@ export default function InventoryScannerApp() {
                                             {/* Titulo y Badge con Imagen */}
                                             <div className="flex gap-4 items-start mb-5 pl-2 relative">
                                                 {/* Contenedor de Imagen */}
-                                                <div className="w-[60px] h-[60px] flex-shrink-0 bg-white rounded-lg border-2 border-[#18181A] overflow-hidden flex items-center justify-center p-1 relative z-10 shadow-lg">
+                                                <div className="w-[90px] h-[90px] flex-shrink-0 bg-white rounded-xl border-2 border-[#18181A] overflow-hidden flex items-center justify-center p-2 relative z-10 shadow-lg">
                                                     {group.Records[0]?.Imagen ? (
                                                         <img src={group.Records[0].Imagen} alt="Product" className="w-full h-full object-contain" />
                                                     ) : (
-                                                        <ImageIcon className="text-gray-300 w-8 h-8 opacity-50" />
+                                                        <ImageIcon className="text-gray-300 w-10 h-10 opacity-50" />
                                                     )}
                                                 </div>
 
