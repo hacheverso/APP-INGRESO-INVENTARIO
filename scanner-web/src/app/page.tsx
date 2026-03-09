@@ -583,49 +583,51 @@ export default function InventoryScannerApp() {
     const exportToExcel = (recordsToExport: InventoryRecord[], loteName: string, showEmptySessionPrompt: boolean = true) => {
         if (recordsToExport.length === 0) return alert("No hay registros para exportar.");
 
-        const dataToExport = recordsToExport.map(r => ({
-            FechaHora: r.FechaHora,
-            Lote: r.Lote,
-            Proveedor: r.Proveedor,
-            Tipo: r.Tipo,
-            UPC: r.UPC,
-            Nombre: r.Nombre,
-            SKU: r.SKU,
-            Serial: r.Serial,
-            Cantidad: r.Cantidad,
-            MonedaBase: r.Moneda,
-            CostoUnitario: r.CostoUnitario,
-            TasaCambioTRM: r.Moneda === 'USD' ? r.TasaCambio : '',
-            Costo_Total_COP: r.CostoTotalCOP,
-            Nota: r.Nota,
-            ID: r.ID
-        })).sort((a, b) => {
-            // Ordenar alfabéticamente por Nombre del Producto
-            if (a.Nombre < b.Nombre) return -1;
-            if (a.Nombre > b.Nombre) return 1;
+        const dataToExport = recordsToExport.map(r => {
+            // Conversión de Fecha de YYYY-MM-DD HH:MM:SS a DD/MM/YYYY
+            let fechaFormatted = r.FechaHora;
+            try {
+                const datePart = r.FechaHora.split(' ')[0];
+                const [year, month, day] = datePart.split('-');
+                if (year && month && day) {
+                    fechaFormatted = `${day}/${month}/${year}`;
+                }
+            } catch (e) {
+                // Keep original if parsing fails
+            }
 
-            // Si el nombre es igual, asegurar que los antiguos/nuevos escaneos caigan en orden
-            return a.FechaHora.localeCompare(b.FechaHora);
+            return {
+                "FECHA": fechaFormatted,
+                "SERIALES": r.Serial || (r.Tipo === 'MASIVO' ? `MASIVO x${r.Cantidad}` : ''),
+                "UPC": r.UPC,
+                "SKU": r.SKU,
+                "NOMBRE": r.Nombre,
+                "COSTO USD": r.Moneda === 'USD' ? r.CostoUnitario : (r.CostoUnitario / r.TasaCambio).toFixed(2), // Aproximación si se entró en COP
+                "CAMBIO": r.TasaCambio,
+                "COSTO COP": r.CostoTotalCOP,
+                "PROVEEDOR": r.Proveedor
+            };
+        }).sort((a, b) => {
+            // Ordenar alfabéticamente por Nombre del Producto
+            if (a.NOMBRE < b.NOMBRE) return -1;
+            if (a.NOMBRE > b.NOMBRE) return 1;
+
+            // Si el nombre es igual, mantener orden subyacente
+            return 0;
         });
 
         const worksheet = XLSX.utils.json_to_sheet(dataToExport);
 
         const colWidths = [
-            { wch: 20 }, // FechaHora
-            { wch: 25 }, // Lote
-            { wch: 25 }, // Proveedor
-            { wch: 10 }, // Tipo
+            { wch: 15 }, // FECHA
+            { wch: 25 }, // SERIALES
             { wch: 20 }, // UPC
-            { wch: 40 }, // Nombre
             { wch: 15 }, // SKU
-            { wch: 30 }, // Serial
-            { wch: 10 }, // Cantidad
-            { wch: 12 }, // Moneda
-            { wch: 15 }, // Costo Unitario
-            { wch: 15 }, // TRM
-            { wch: 20 }, // Costo Total COP
-            { wch: 30 }, // Nota
-            { wch: 15 }, // ID
+            { wch: 45 }, // NOMBRE
+            { wch: 15 }, // COSTO USD
+            { wch: 10 }, // CAMBIO
+            { wch: 15 }, // COSTO COP
+            { wch: 25 }, // PROVEEDOR
         ];
         worksheet['!cols'] = colWidths;
 
