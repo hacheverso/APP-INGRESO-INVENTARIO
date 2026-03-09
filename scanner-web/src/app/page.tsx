@@ -920,7 +920,12 @@ export default function InventoryScannerApp() {
                                 <div><label className={labelClass}>Referencia / Auto SKU</label><input type="text" value={newProductForm.SKU} onChange={e => setNewProductForm({ ...newProductForm, SKU: e.target.value })} onKeyDown={e => handleKeyDown(e, 'modal_submit')} className={`${inputClass} font-mono text-sm tracking-widest text-brand-blue uppercase`} placeholder="Generado Aut..." /></div>
                                 <div className="flex flex-col">
                                     <label className={labelClass}>URL de Imagen</label>
-                                    <div className="flex gap-2 relative">
+                                    <div className="flex gap-2 relative items-center">
+                                        {newProductForm.IMAGEN && (
+                                            <div className="w-12 h-12 flex-shrink-0 bg-white rounded-lg border border-dark-border overflow-hidden flex items-center justify-center p-1 shadow-inner">
+                                                <img src={newProductForm.IMAGEN} alt="Preview" className="max-w-full max-h-full object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                            </div>
+                                        )}
                                         <input type="text" value={newProductForm.IMAGEN} onChange={e => setNewProductForm({ ...newProductForm, IMAGEN: e.target.value })} onKeyDown={e => handleKeyDown(e, 'modal_submit')} className={`${inputClass} flex-1`} placeholder="https://..." />
 
                                         <button
@@ -933,7 +938,7 @@ export default function InventoryScannerApp() {
                                                 const query = encodeURIComponent(newProductForm.NOMBRE);
                                                 window.open(`https://www.google.com/search?tbm=isch&q=${query}`, '_blank');
                                             }}
-                                            className="bg-brand-blue hover:bg-brand-blue/80 text-white px-3 flex items-center justify-center rounded-xl transition-colors tooltip-trigger"
+                                            className="bg-brand-blue hover:bg-brand-blue/80 text-white px-3 py-3 flex items-center justify-center rounded-xl transition-colors tooltip-trigger shrink-0"
                                             title="Buscar en Google Imágenes"
                                         >
                                             <ImageIcon size={18} />
@@ -954,7 +959,7 @@ export default function InventoryScannerApp() {
                                                     showToast("Error al leer portapapeles", "error");
                                                 }
                                             }}
-                                            className="bg-dark-input border border-dark-border hover:bg-white/10 text-gray-400 px-3 flex items-center justify-center rounded-xl transition-colors tooltip-trigger"
+                                            className="bg-dark-input border border-dark-border hover:bg-white/10 text-gray-400 px-3 py-3 flex items-center justify-center rounded-xl transition-colors tooltip-trigger shrink-0"
                                             title="Pegar URL directamente"
                                         >
                                             <FileDown size={18} />
