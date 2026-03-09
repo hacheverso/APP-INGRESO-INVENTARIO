@@ -46,6 +46,7 @@ interface InventoryRecord {
     CostoUnitario: number;
     TasaCambio: number;
     CostoTotalCOP: number;
+    Imagen?: string;
 }
 
 interface ProductGroup {
@@ -71,7 +72,7 @@ export default function InventoryScannerApp() {
     const [view, setView] = useState<AppView>('SCANNER');
 
     // Finanzas Globales de Sesión
-    const [currency, setCurrency] = useState<Currency>('COP');
+    const [currency, setCurrency] = useState<Currency>('USD');
     const [exchangeRate, setExchangeRate] = useState<string>("4000"); // TRM base
 
     // History and Navigation State
@@ -1121,9 +1122,18 @@ export default function InventoryScannerApp() {
                                                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-blue shadow-[0_0_15px_rgba(37,99,235,1)]"></div>
                                             )}
 
-                                            {/* Titulo y Badge */}
-                                            <div className="flex justify-between items-start mb-5 pl-2">
-                                                <div className="flex flex-col pr-4">
+                                            {/* Titulo y Badge con Imagen */}
+                                            <div className="flex gap-4 items-start mb-5 pl-2 relative">
+                                                {/* Contenedor de Imagen */}
+                                                <div className="w-[60px] h-[60px] flex-shrink-0 bg-white rounded-lg border-2 border-[#18181A] overflow-hidden flex items-center justify-center p-1 relative z-10 shadow-lg">
+                                                    {group.Records[0]?.Imagen ? (
+                                                        <img src={group.Records[0].Imagen} alt="Product" className="w-full h-full object-contain" />
+                                                    ) : (
+                                                        <ImageIcon className="text-gray-300 w-8 h-8 opacity-50" />
+                                                    )}
+                                                </div>
+
+                                                <div className="flex flex-col pr-4 flex-1">
                                                     <h3 className="text-white font-black text-sm md:text-base uppercase tracking-widest leading-tight">{group.Nombre}</h3>
                                                     <span className="text-gray-500 font-bold text-[10px] tracking-widest uppercase mt-1 flex gap-2">
                                                         <span>{group.UPC}</span>
