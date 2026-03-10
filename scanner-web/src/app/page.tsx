@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 type ScanMode = 'UPC_SERIAL' | 'MASSIVE';
 type Currency = 'COP' | 'USD';
-type AppView = 'SCANNER' | 'HISTORY'; // Nueva capa de navegación
+type AppView = 'SCANNER' | 'HISTORY' | 'PRODUCTS'; // Nueva capa para gestión de Catálogo Maestro
 
 interface HistorySession {
     id: string; // Timestamp
@@ -1154,9 +1154,17 @@ export default function InventoryScannerApp() {
                         <button onClick={() => fileInputRef.current?.click()} className="p-2.5 bg-dark-input hover:bg-[#151E32] text-gray-400 hover:text-brand-blue rounded-xl border border-dark-border hover:border-brand-blue/30 transition-all font-bold" title="Importar Base de Datos">
                             <UploadCloud size={16} />
                         </button>
-                        <button onClick={() => setView(view === 'SCANNER' ? 'HISTORY' : 'SCANNER')} className="flex items-center gap-2 px-4 py-2 bg-brand-blue/10 hover:bg-brand-blue/20 text-brand-blue rounded-xl border border-brand-blue/40 transition-all font-black text-xs uppercase tracking-wider shadow-[0_0_15px_rgba(37,99,235,0.15)]" title={view === 'SCANNER' ? 'Ver Historial' : 'Volver al Escáner'}>
-                            {view === 'SCANNER' ? <><History size={16} /> Historial</> : <><ScanLine size={16} /> Escáner</>}
-                        </button>
+                        <div className="flex bg-dark-input rounded-xl border border-dark-border overflow-hidden shadow-[0_0_15px_rgba(37,99,235,0.15)]">
+                            <button onClick={() => setView('SCANNER')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all ${view === 'SCANNER' ? 'bg-brand-blue/20 text-brand-blue' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`} title="Volver al Escáner">
+                                <ScanLine size={14} /> Escáner
+                            </button>
+                            <button onClick={() => setView('PRODUCTS')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all border-l border-dark-border ${view === 'PRODUCTS' ? 'bg-brand-blue/20 text-brand-blue' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`} title="Catálogo de Productos">
+                                <PackageCheck size={14} /> Productos
+                            </button>
+                            <button onClick={() => setView('HISTORY')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all border-l border-dark-border ${view === 'HISTORY' ? 'bg-brand-blue/20 text-brand-blue' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`} title="Ver Historial">
+                                <History size={14} /> Historial
+                            </button>
+                        </div>
                     </div>
 
                     {/* Controles de Audio */}
@@ -1253,6 +1261,91 @@ export default function InventoryScannerApp() {
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        )}
+                    </div>
+                ) : view === 'PRODUCTS' ? (
+                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="flex items-center gap-3 text-white mb-2">
+                            <PackageCheck size={24} className="text-brand-blue" />
+                            <h2 className="text-2xl font-black tracking-widest uppercase">Catálogo de Productos Maestro</h2>
+                        </div>
+
+                        {Object.keys(productDB).length === 0 ? (
+                            <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40">
+                                <Database size={48} className="text-gray-600 mb-4" />
+                                <p className="text-gray-400 font-bold uppercase tracking-widest">El catálogo está vacío.</p>
+                            </div>
+                        ) : (
+                            <div className="bg-dark-card border border-dark-border rounded-3xl overflow-hidden shadow-2xl">
+                                <div className="overflow-x-auto min-w-full">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="bg-[#151E32] text-gray-400 uppercase tracking-widest text-[10px] sm:text-xs">
+                                                <th className="px-6 py-4 font-black w-24 text-center">Foto</th>
+                                                <th className="px-6 py-4 font-black">UPC</th>
+                                                <th className="px-6 py-4 font-black">Nombre</th>
+                                                <th className="px-6 py-4 font-black">SKU</th>
+                                                <th className="px-6 py-4 font-black text-right min-w-[120px]">Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-dark-border text-gray-300">
+                                            {Object.values(productDB).map((prod) => (
+                                                <tr key={prod.UPC} className="hover:bg-white/5 transition-colors group">
+                                                    <td className="px-6 py-3">
+                                                        <div className="w-12 h-12 bg-white rounded flex items-center justify-center border border-gray-700 overflow-hidden mx-auto">
+                                                            {prod.IMAGEN ? (
+                                                                <img src={prod.IMAGEN} alt={prod.NOMBRE} className="max-w-full max-h-full object-contain" />
+                                                            ) : (
+                                                                <ImageIcon size={16} className="text-gray-400" />
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 font-mono text-brand-blue font-bold">{prod.UPC}</td>
+                                                    <td className="px-6 py-4 font-bold max-w-xs truncate" title={prod.NOMBRE}>{prod.NOMBRE}</td>
+                                                    <td className="px-6 py-4 text-xs tracking-wider opacity-60 font-mono">{prod.SKU || '---'}</td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <div className="flex justify-end gap-2 opacity-100 sm:opacity-50 group-hover:opacity-100 transition-opacity">
+                                                            <button 
+                                                                onClick={() => {
+                                                                    setNewProductForm({ UPC: prod.UPC, NOMBRE: prod.NOMBRE, SKU: prod.SKU || '', IMAGEN: prod.IMAGEN || '' });
+                                                                    setShowNewProductModal(true);
+                                                                }} 
+                                                                className="p-2 bg-dark-bg hover:bg-brand-blue/20 text-gray-400 hover:text-brand-blue rounded-lg transition-colors border border-dark-border shadow-sm"
+                                                                title="Editar Nombre / Foto"
+                                                            >
+                                                                <Settings2 size={16} />
+                                                            </button>
+                                                            <button 
+                                                                onClick={async () => {
+                                                                    if (confirm(`¿Eliminar definitivamente el producto [${prod.UPC}] de la nube?`)) {
+                                                                        try {
+                                                                            const res = await fetch(`/api/products?upc=${prod.UPC}`, { method: 'DELETE' });
+                                                                            if (res.ok) {
+                                                                                showToast("Producto eliminado de la BD", "success");
+                                                                                setProductDB(prev => {
+                                                                                    const updated = { ...prev };
+                                                                                    delete updated[prod.UPC];
+                                                                                    return updated;
+                                                                                });
+                                                                            }
+                                                                        } catch (e) {
+                                                                            showToast("Error eliminando", "error");
+                                                                        }
+                                                                    }
+                                                                }} 
+                                                                className="p-2 bg-dark-bg hover:bg-red-900/40 text-gray-400 hover:text-red-400 rounded-lg transition-colors border border-dark-border shadow-sm"
+                                                                title="Eliminar de la BD"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         )}
                     </div>

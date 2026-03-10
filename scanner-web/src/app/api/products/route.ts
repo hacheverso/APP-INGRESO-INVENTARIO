@@ -68,3 +68,48 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }
+
+export async function PUT(req: Request) {
+    try {
+        const body = await req.json();
+        const { UPC, SKU, NOMBRE, IMAGEN } = body;
+
+        if (!UPC || !NOMBRE) {
+            return NextResponse.json({ success: false, error: 'UPC and NOMBRE are required for update' }, { status: 400 });
+        }
+
+        const updatedProduct = await prisma.product.update({
+            where: { upc: UPC },
+            data: {
+                sku: SKU || '',
+                name: NOMBRE,
+                image: IMAGEN || null
+            }
+        });
+
+        return NextResponse.json({ success: true, data: updatedProduct });
+    } catch (error: any) {
+        console.error("Error updating product:", error);
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+}
+
+export async function DELETE(req: Request) {
+    try {
+        const url = new URL(req.url);
+        const upc = url.searchParams.get('upc');
+
+        if (!upc) {
+            return NextResponse.json({ success: false, error: 'UPC is required for deletion' }, { status: 400 });
+        }
+
+        await prisma.product.delete({
+            where: { upc: upc }
+        });
+
+        return NextResponse.json({ success: true, message: "Product deleted successfully" });
+    } catch (error: any) {
+        console.error("Error deleting product:", error);
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+}
