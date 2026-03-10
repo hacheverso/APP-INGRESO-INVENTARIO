@@ -41,6 +41,32 @@ export async function GET() {
 export async function POST(req: Request) {
     try {
         const body = await req.json();
+
+        // Branch 1: Batch Process (Array)
+        if (Array.isArray(body)) {
+            const operations = body.map((item: any) => {
+                return prisma.product.upsert({
+                    where: { upc: item.UPC },
+                    update: {
+                        sku: item.SKU || '',
+                        name: item.NOMBRE,
+                        image: item.IMAGEN || null
+                    },
+                    create: {
+                        upc: item.UPC,
+                        sku: item.SKU || '',
+                        name: item.NOMBRE,
+                        image: item.IMAGEN || null
+                    }
+                });
+            });
+
+            // Execute all upserts cleanly
+            const results = await prisma.$transaction(operations);
+            return NextResponse.json({ success: true, count: results.length, data: results });
+        } 
+        
+        // Branch 2: Single Product Process (Object)
         const { UPC, SKU, NOMBRE, IMAGEN } = body;
 
         if (!UPC || !NOMBRE) {

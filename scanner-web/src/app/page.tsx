@@ -383,18 +383,37 @@ export default function InventoryScannerApp() {
                 });
 
                 if (addedCount > 0) {
+                    // 1. Update React State Optimistically
                     setProductDB(newDB);
                     if (matchedProduct && newDB[matchedProduct.UPC]) {
                         setMatchedProduct(newDB[matchedProduct.UPC]);
                     }
 
-                    const imagesCount = Object.values(newDB).filter(p => p.IMAGEN && p.IMAGEN.trim() !== '').length;
-                    if (imagesCount === 0) {
-                        const headers = results.data[0] ? Object.keys(results.data[0]).join(', ') : 'Ninguna';
-                        showToast(`⚠️ Productos cargados pero SIN FOTOS. Excel exportó las columnas: [ ${headers} ]. ¿Pusiste imágenes reales en vez de texto URL?`, 'error');
-                    } else {
-                        showToast(`📦 Base de Datos actualizada: ${addedCount} productos cargados (${imagesCount} con foto).`, 'success');
-                    }
+                    // 2. Synchronize Batch to Neon Cloud Database
+                    fetch('/api/products', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(Object.values(newDB))
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            const imagesCount = Object.values(newDB).filter(p => p.IMAGEN && p.IMAGEN.trim() !== '').length;
+                            if (imagesCount === 0) {
+                                const headers = results.data[0] ? Object.keys(results.data[0]).join(', ') : 'Ninguna';
+                                showToast(`⚠️ Productos guardados en la Nube SIN FOTOS. Revisa columnas: [ ${headers} ].`, 'error');
+                            } else {
+                                showToast(`📦 Nube actualizada: ${data.count || addedCount} guardados (${imagesCount} con foto).`, 'success');
+                            }
+                        } else {
+                            showToast(`❌ Error guardando en la Nube: ${data.error}`, 'error');
+                        }
+                    })
+                    .catch(err => {
+                        console.error("Batch UPSERT Error:", err);
+                        showToast(`❌ Error de red al sincronizar Excel con la Nube.`, 'error');
+                    });
+
                 } else {
                     showToast(`Error: No se encontró la columna "UPC". Asegúrate de incluir NOMBRE, UPC, SKU e IMAGEN.`, 'error');
                 }
