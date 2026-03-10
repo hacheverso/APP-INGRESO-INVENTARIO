@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id        String   @id @default(cuid()) // Simple CUID for Postgres
+  upc       String   @unique
+  sku       String
+  name      String
+  image     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model HistorySession {
+  id         String   @id @default(uuid()) // Uses existing UUIDs from local storage logic
+  date       String   // ISO string date currently used
+  batchName  String?
+  provider   String?
+  totalItems Int
+  totalCop   Float
+  records    HistoryRecord[]
+  createdAt  DateTime @default(now())
+}
+
+model HistoryRecord {
+  id        String   @id @default(uuid())
+  sessionId String
+  session   HistorySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  fecha     String
+  cantidad  Int
+  seriales  String   // JSON stringified array of serials or empty JSON array '[]'
+  upc       String
+  sku       String
+  nombre    String
+  costoUsd  Float
+  costoCop  Float
+  trm       Float
+  
+  createdAt DateTime @default(now())
+}

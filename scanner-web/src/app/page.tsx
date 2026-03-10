@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown } from 'lucide-react';
+import { Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { v4 as uuidv4 } from 'uuid';
@@ -151,29 +151,28 @@ export default function InventoryScannerApp() {
             }
         }
 
-        // Cargar Base de Datos de Productos
-        const savedDB = localStorage.getItem('scanner_product_db');
-        if (savedDB) {
+        // Fetch Data from Neon Postgres (Products and Sessions)
+        const fetchRemoteData = async () => {
             try {
-                const parsedDB = JSON.parse(savedDB);
-                if (parsedDB && Object.keys(parsedDB).length > 0) {
-                    setProductDB(parsedDB);
+                // Products
+                const prodRes = await fetch('/api/products');
+                const prodData = await prodRes.json();
+                if (prodData.success && prodData.data) {
+                    setProductDB(prodData.data);
                 }
-            } catch (e) {
-                console.error("Error cargando DB de productos", e);
-            }
-        }
 
-        // Cargar Historial de Sesiones Pasadas
-        const savedHistory = localStorage.getItem('scanner_history_sessions');
-        if (savedHistory) {
-            try {
-                const parsedHistory = JSON.parse(savedHistory);
-                if (Array.isArray(parsedHistory)) setSavedSessions(parsedHistory);
-            } catch (e) {
-                console.error("Error cargando el historial de sesiones", e);
+                // Sessions
+                const sessRes = await fetch('/api/sessions');
+                const sessData = await sessRes.json();
+                if (sessData.success && sessData.data) {
+                    setSavedSessions(sessData.data);
+                }
+            } catch (err) {
+                console.error("Error fetching remote data:", err);
+                showToast("Error de conexión con la nube", "error");
             }
-        }
+        };
+        fetchRemoteData();
 
         // Cargar Historial de Proveedores
         const savedProviders = localStorage.getItem('scanner_proveedores');
@@ -265,6 +264,77 @@ export default function InventoryScannerApp() {
             setIsFlashing(false);
             setScanStatus('idle');
         }, 200);
+    };
+
+    // Herramienta de migración One-Time de LocalStorage a Postgres
+    const migrateLocalToCloud = async () => {
+        if (!confirm("⚠️ MIGRACIÓN A LA NUBE: Esto enviará todos tus productos y el historial de sesiones guardadas localmente hacia la Base de Datos Neon. Asegúrate de tener conexión. ¿Continuar con la migración?")) {
+            return;
+        }
+
+        try {
+            showToast("Iniciando Migración... Sincronizando catálogo", "info");
+
+            // 1. Migrar Catálogo de Productos
+            const savedDB = localStorage.getItem('scanner_product_db');
+            if (savedDB) {
+                const parsedDB = JSON.parse(savedDB);
+                const productsArray = Object.values(parsedDB) as Product[];
+
+                let successCount = 0;
+                for (const prod of productsArray) {
+                    try {
+                        await fetch('/api/products', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(prod)
+                        });
+                        successCount++;
+                    } catch (e) {
+                        console.error("Failed to migrate product:", prod.UPC);
+                    }
+                }
+                showToast(`Catálogo: ${successCount} productos sincronizados.`, "success");
+            }
+
+            // 2. Migrar Sesiones Históricas
+            showToast("Migrando Historial de Sesiones...", "info");
+            const savedHistory = localStorage.getItem('scanner_history_sessions');
+            if (savedHistory) {
+                const parsedHistory = JSON.parse(savedHistory) as HistorySession[];
+
+                let sessionCount = 0;
+                for (const session of parsedHistory) {
+                    try {
+                        const payload = {
+                            id: session.id,
+                            date: session.fecha,
+                            batchName: session.lote,
+                            proveedor: session.proveedor,
+                            totalItems: session.totalUnidades,
+                            totalCop: session.costoTotalCOP,
+                            records: session.records
+                        };
+
+                        await fetch('/api/sessions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        sessionCount++;
+                    } catch (e) {
+                        console.error("Failed to migrate session:", session.id);
+                    }
+                }
+                showToast(`Historial: ${sessionCount} sesiones migradas a la nube.`, "success");
+            }
+
+            showToast("MIGRACIÓN COMPLETA ✅ Recarga la página para ver los datos frescos.", "success");
+
+        } catch (error) {
+            console.error("Error global de migración:", error);
+            showToast("Hubo un error fatal durante la migración.", "error");
+        }
     };
 
     // Contador de Sesión actual por UPC
@@ -413,7 +483,7 @@ export default function InventoryScannerApp() {
         }
     };
 
-    const handleSaveNewProduct = () => {
+    const handleSaveNewProduct = async () => {
         const { UPC, NOMBRE, SKU, IMAGEN } = newProductForm;
         if (!NOMBRE.trim()) {
             showToast("El nombre del producto es obligatorio.", 'error');
@@ -421,17 +491,35 @@ export default function InventoryScannerApp() {
         }
 
         const newProd: Product = { UPC, NOMBRE: NOMBRE.trim(), SKU: SKU.trim(), IMAGEN, LastCost: 0 };
-        setProductDB(prev => ({ ...prev, [UPC]: newProd }));
-        setMatchedProduct(newProd);
-        speakProduct(newProd.NOMBRE);
-        setShowNewProductModal(false);
-        showToast("Producto creado al instante.", 'success');
 
-        // Auto-expand the newly created group
-        setExpandedGroups((prev) => ({ ...prev, [newProd.UPC]: true }));
+        try {
+            const res = await fetch('/api/products', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newProd)
+            });
+            const data = await res.json();
 
-        if (mode === 'UPC_SERIAL') serialRef.current?.focus();
-        else qtyRef.current?.focus();
+            if (data.success) {
+                // Optimistic UI Update
+                setProductDB(prev => ({ ...prev, [UPC]: newProd }));
+                setMatchedProduct(newProd);
+                speakProduct(newProd.NOMBRE);
+                setShowNewProductModal(false);
+                showToast("Producto creado en la nube al instante.", 'success');
+
+                // Auto-expand the newly created group
+                setExpandedGroups((prev) => ({ ...prev, [newProd.UPC]: true }));
+
+                if (mode === 'UPC_SERIAL') serialRef.current?.focus();
+                else qtyRef.current?.focus();
+            } else {
+                showToast("Error al guardar en la nube: " + data.error, 'error');
+            }
+        } catch (error) {
+            console.error("Error saving product to cloud:", error);
+            showToast("Error de conexión al intentar guardar.", 'error');
+        }
     };
 
     // Helper: Generador Inteligente de SKU
@@ -702,29 +790,60 @@ export default function InventoryScannerApp() {
         }
     };
 
-    const saveCurrentSessionToHistory = () => {
+    const saveCurrentSessionToHistory = async () => {
         if (records.length === 0) return;
 
         // Calcular los totales de la sesión actual
         const currentTotalUnidades = records.reduce((acc, curr) => acc + curr.Cantidad, 0);
         const currentCostoTotalCOP = records.reduce((acc, curr) => acc + curr.CostoTotalCOP, 0);
 
-        const newSession: HistorySession = {
-            id: Date.now().toString(),
-            fecha: new Date().toLocaleString('es-CO'),
-            lote: batchName || `Ingreso ${new Date().toISOString().split('T')[0]}`,
+        const newSessionId = Date.now().toString();
+
+        const newSessionPayload = {
+            id: newSessionId,
+            date: new Date().toLocaleString('es-CO'),
+            batchName: batchName || `Ingreso ${new Date().toISOString().split('T')[0]}`,
             proveedor: proveedor,
-            totalRecords: records.length,
-            totalUnidades: currentTotalUnidades,
-            costoTotalCOP: currentCostoTotalCOP,
-            monedaBase: currency,
-            records: [...records]
+            totalItems: currentTotalUnidades,
+            totalCop: currentCostoTotalCOP,
+            records: records
         };
 
-        setSavedSessions([newSession, ...savedSessions]);
-        setRecords([]); // Vaciamos la sesión activa
-        setView('HISTORY'); // Navegar automáticamente al Historial al guardar
-        showToast("Sesión Guardada en el Historial", "success");
+        try {
+            showToast("Guardando sesión en la nube, por favor espera...", "info");
+            const res = await fetch('/api/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newSessionPayload)
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                // Sincronizar UI localmente
+                const formattedNewSession: HistorySession = {
+                    id: newSessionId,
+                    fecha: newSessionPayload.date,
+                    lote: newSessionPayload.batchName,
+                    proveedor: newSessionPayload.proveedor,
+                    totalRecords: records.length,
+                    totalUnidades: currentTotalUnidades,
+                    costoTotalCOP: currentCostoTotalCOP,
+                    monedaBase: currency,
+                    records: [...records]
+                };
+
+                setSavedSessions(prev => [formattedNewSession, ...prev]);
+                setRecords([]); // Vaciamos la sesión activa localmente solo si guardó con éxito en la nube
+                localStorage.removeItem('scanner_backup'); // Limpiamos backup local
+                setView('HISTORY');
+                showToast("Sesión Guardada permanentemente en Neon DB", "success");
+            } else {
+                showToast("Error al guardar la sesión: " + data.error, "error");
+            }
+        } catch (error) {
+            console.error("Error guardando sesión en Neon:", error);
+            showToast("Error de red. Tus registros están a salvo en local.", "error");
+        }
     };
 
     const loadSessionForEditing = (session: HistorySession) => {
@@ -1029,6 +1148,9 @@ export default function InventoryScannerApp() {
 
                     {/* Herramientas Secundarias (Iconos y Botón Principal Historial) */}
                     <div className="flex items-center gap-2">
+                        <button onClick={migrateLocalToCloud} className="p-2.5 bg-dark-input hover:bg-emerald-900/40 text-emerald-500 rounded-xl border border-dark-border hover:border-emerald-500/50 transition-all font-bold group" title="FORZAR: Migrar Backup Local a la Nube">
+                            <CloudLightning size={16} className="group-hover:animate-pulse" />
+                        </button>
                         <button onClick={() => fileInputRef.current?.click()} className="p-2.5 bg-dark-input hover:bg-[#151E32] text-gray-400 hover:text-brand-blue rounded-xl border border-dark-border hover:border-brand-blue/30 transition-all font-bold" title="Importar Base de Datos">
                             <UploadCloud size={16} />
                         </button>
