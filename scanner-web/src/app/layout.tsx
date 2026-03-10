@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-    title: "Scanner de Ingresos",
-    description: "Scanner Local de Inventario",
+    title: "INGRESADOS | Control de Inventario",
+    description: "Plataforma inteligente de escaneo y control de bodega",
 };
 
 export default function RootLayout({

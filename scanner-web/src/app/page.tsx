@@ -1116,12 +1116,15 @@ export default function InventoryScannerApp() {
                 {/* Zona Izquierda: Identidad */}
                 <div className="flex items-center gap-4 cursor-pointer" onClick={() => setView('SCANNER')}>
                     <div className="flex items-center gap-3">
-                        <Box size={28} className="text-brand-blue" />
+                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl overflow-hidden shadow-[0_0_15px_rgba(37,99,235,0.4)] flex-shrink-0">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src="/logo.png" alt="INGRESADOS Logo" className="w-full h-full object-cover" />
+                        </div>
                         <div className="flex flex-col">
-                            <h1 className="text-xl font-black tracking-widest text-white uppercase leading-none">INGRESO DE MERCANCÍA INTELIGENTE</h1>
+                            <h1 className="text-xl md:text-2xl font-black tracking-[0.3em] text-white uppercase leading-none drop-shadow-md">INGRESADOS</h1>
                             <div className="flex items-center gap-4 mt-1">
-                                <span className="text-[10px] font-bold tracking-widest uppercase text-gray-400 hidden md:inline-block">CREADO POR HACHEVERSO</span>
-                                <span className="text-[10px] font-bold tracking-widest uppercase text-gray-500">Bodega Activa</span>
+                                <span className="text-[9px] md:text-[10px] font-bold tracking-[0.2em] uppercase text-brand-blue/80 hidden md:inline-block">INVENTORY & TRACKING</span>
+                                <span className="text-[9px] md:text-[10px] font-bold tracking-[0.2em] uppercase text-gray-500">BODEGA ACTIVA</span>
                             </div>
                         </div>
                     </div>
