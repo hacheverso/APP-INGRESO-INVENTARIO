@@ -1092,16 +1092,16 @@ export default function InventoryScannerApp() {
                 </div>
             )}
 
-            {/* Header Global (Dark Terminal UI) - Single Row Layout */}
-            <header className="bg-dark-bg px-6 lg:px-8 py-5 mt-6 flex items-center justify-between z-10 transition-colors duration-300 gap-6 overflow-x-auto custom-scrollbar">
+            {/* Header Global (Dark Terminal UI) */}
+            <header className="bg-dark-bg px-6 lg:px-8 py-5 mt-6 flex flex-wrap items-center justify-between z-10 transition-colors duration-300 gap-4">
                 {/* Zona Izquierda: Identidad */}
-                <div className="flex items-center gap-4 cursor-pointer min-w-max" onClick={() => setView('SCANNER')}>
+                <div className="flex items-center gap-4 cursor-pointer" onClick={() => setView('SCANNER')}>
                     <div className="flex items-center gap-3">
                         <Box size={28} className="text-brand-blue" />
                         <div className="flex flex-col">
                             <h1 className="text-xl font-black tracking-widest text-white uppercase leading-none">INGRESO DE MERCANCÍA INTELIGENTE</h1>
                             <div className="flex items-center gap-4 mt-1">
-                                <span className="text-[10px] font-bold tracking-widest uppercase text-gray-400">CREADO POR HACHEVERSO</span>
+                                <span className="text-[10px] font-bold tracking-widest uppercase text-gray-400 hidden md:inline-block">CREADO POR HACHEVERSO</span>
                                 <span className="text-[10px] font-bold tracking-widest uppercase text-gray-500">Bodega Activa</span>
                             </div>
                         </div>
@@ -1109,11 +1109,11 @@ export default function InventoryScannerApp() {
                 </div>
 
                 {/* Zona Central: Contexto del Lote */}
-                <div className="flex items-center gap-3 flex-1 justify-center min-w-max">
+                <div className="flex items-center gap-3 flex-wrap lg:flex-nowrap justify-center">
                     {/* Batch Name Pill */}
                     <div className="flex items-center bg-dark-input px-4 py-2 rounded-xl border border-dark-border">
-                        <input type="text" value={batchName} onChange={(e) => setBatchName(e.target.value)} className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[140px] md:w-[150px]" placeholder="Nombre del Lote..." />
-                        <ChevronDown size={14} className="text-gray-500 ml-1" />
+                        <input type="text" value={batchName} onChange={(e) => setBatchName(e.target.value)} className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[120px] md:w-[150px]" placeholder="Nombre del Lote..." />
+                        <ChevronDown size={14} className="text-gray-500 ml-1 shrink-0" />
                     </div>
 
                     {/* Provider Pill (Auto-feeding Datalist) */}
@@ -1123,18 +1123,18 @@ export default function InventoryScannerApp() {
                             type="text"
                             value={proveedor}
                             onChange={(e) => setProveedor(e.target.value)}
-                            className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[150px] md:w-[160px]"
+                            className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[130px] md:w-[160px]"
                             placeholder="Proveedor o Cliente..."
                         />
                         <datalist id="proveedores-list">
                             {listaProveedores.map((prov, i) => <option key={i} value={prov} />)}
                         </datalist>
-                        <ChevronDown size={14} className="text-gray-500 ml-1" />
+                        <ChevronDown size={14} className="text-gray-500 ml-1 shrink-0" />
                     </div>
                 </div>
 
                 {/* Zona Derecha: Finanzas y Herramientas Secundarias */}
-                <div className="flex items-center justify-end gap-3 min-w-max z-20 relative">
+                <div className="flex flex-wrap items-center justify-end gap-3 z-20 relative">
                     {/* Bloque Financiero Unificado (Moneda + TRM) */}
                     <div className="flex items-center gap-1.5 bg-dark-input p-1 rounded-xl border border-dark-border">
                         <div className="flex items-center">
