@@ -351,6 +351,7 @@ export default function InventoryScannerApp() {
             skipEmptyLines: true,
             complete: (results) => {
                 const newDB: Record<string, Product> = { ...productDB };
+                const newProductsToUpload: Product[] = [];
                 let addedCount = 0;
 
                 results.data.forEach((row: any) => {
@@ -377,7 +378,9 @@ export default function InventoryScannerApp() {
                     const _imagen = imgKey ? row[imgKey]?.trim() : '';
 
                     if (_upc) {
-                        newDB[_upc] = { UPC: _upc, NOMBRE: _nombre, SKU: _sku, IMAGEN: _imagen };
+                        const newProd = { UPC: _upc, NOMBRE: _nombre, SKU: _sku, IMAGEN: _imagen, LastCost: 0 };
+                        newDB[_upc] = newProd;
+                        newProductsToUpload.push(newProd);
                         addedCount++;
                     }
                 });
@@ -389,21 +392,21 @@ export default function InventoryScannerApp() {
                         setMatchedProduct(newDB[matchedProduct.UPC]);
                     }
 
-                    // 2. Synchronize Batch to Neon Cloud Database
+                    // 2. Synchronize ONLY New Batch to Neon Cloud Database
                     fetch('/api/products', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(Object.values(newDB))
+                        body: JSON.stringify(newProductsToUpload)
                     })
                     .then(res => res.json())
                     .then(data => {
                         if (data.success) {
-                            const imagesCount = Object.values(newDB).filter(p => p.IMAGEN && p.IMAGEN.trim() !== '').length;
+                            const imagesCount = newProductsToUpload.filter(p => p.IMAGEN && p.IMAGEN.trim() !== '').length;
                             if (imagesCount === 0) {
                                 const headers = results.data[0] ? Object.keys(results.data[0]).join(', ') : 'Ninguna';
                                 showToast(`⚠️ Productos guardados en la Nube SIN FOTOS. Revisa columnas: [ ${headers} ].`, 'error');
                             } else {
-                                showToast(`📦 Nube actualizada: ${data.count || addedCount} guardados (${imagesCount} con foto).`, 'success');
+                                showToast(`📦 Nube actualizada: ${data.count || addedCount} procesados (${imagesCount} con foto).`, 'success');
                             }
                         } else {
                             showToast(`❌ Error guardando en la Nube: ${data.error}`, 'error');
