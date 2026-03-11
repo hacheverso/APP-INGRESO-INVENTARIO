@@ -969,7 +969,7 @@ export default function InventoryScannerApp() {
     }, [records, expandedGroups, productDB]);
 
 
-    const inputClass = "w-full bg-gray-50/50 dark:bg-dark-input border border-gray-200 dark:border-dark-border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-blue focus:bg-white dark:focus:bg-dark-bg transition-all dark:text-gray-100 placeholder-gray-400 font-medium";
+    const inputClass = "w-full bg-gray-50/50 dark:bg-dark-input border border-gray-200 dark:border-dark-border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-blue focus:bg-white dark:focus:bg-dark-bg transition-all text-slate-900 dark:text-gray-100 placeholder-gray-400 font-medium";
     const labelClass = "block text-xs font-bold uppercase tracking-wider mb-2 text-gray-500 dark:text-gray-400";
 
     // Contadores Globales Financieros
