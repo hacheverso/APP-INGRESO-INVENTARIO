@@ -17,23 +17,35 @@ export async function GET() {
         // Map the Prisma ORM structure back to the shape expected by the frontend's HistorySession interface
         const formattedSessions = sessions.map(session => ({
             id: session.id, // Keep the UUID
-            date: session.date,
-            batchName: session.batchName || "",
+            fecha: session.date,
+            lote: session.batchName || "",
             proveedor: session.provider || "",
-            totalItems: session.totalItems,
-            totalCop: session.totalCop,
-            records: session.records.map(r => ({
-                id: r.id,
-                fecha: r.fecha,
-                Cantidad: r.cantidad,
-                Seriales: JSON.parse(r.seriales || '[]'),
-                UPC: r.upc,
-                SKU: r.sku,
-                NOMBRE: r.nombre,
-                CostoUnitarioUSD: r.costoUsd,
-                CostoTotalCOP: r.costoCop,
-                TrmAcordada: r.trm
-            }))
+            totalRecords: session.records.length,
+            totalUnidades: session.totalItems,
+            costoTotalCOP: session.totalCop,
+            monedaBase: 'COP', // Resumed base currency
+            records: session.records.map(r => {
+                const serialesArray = JSON.parse(r.seriales || '[]');
+                const isUSD = r.costoUsd > 0;
+                return {
+                    ID: r.id,
+                    FechaHora: r.fecha,
+                    Lote: session.batchName || "",
+                    Proveedor: session.provider || "",
+                    Tipo: "NUBESYNC",
+                    UPC: r.upc,
+                    Nombre: r.nombre,
+                    SKU: r.sku,
+                    Serial: serialesArray.length > 0 ? serialesArray[0] : "",
+                    Cantidad: r.cantidad,
+                    Nota: "",
+                    Moneda: isUSD ? 'USD' : 'COP',
+                    CostoUnitario: isUSD ? r.costoUsd : (r.cantidad > 0 ? r.costoCop / r.cantidad : 0),
+                    TasaCambio: r.trm || 1,
+                    CostoTotalCOP: r.costoCop,
+                    Imagen: "" // Ignored in history history view
+                };
+            })
         }));
 
         return NextResponse.json({ success: true, data: formattedSessions });
@@ -71,17 +83,17 @@ export async function POST(req: Request) {
             if (records.length > 0) {
                 await tx.historyRecord.createMany({
                     data: records.map((r: any) => ({
-                        id: r.id,
+                        id: r.ID || crypto.randomUUID(),
                         sessionId: session.id,
-                        fecha: r.fecha,
-                        cantidad: r.Cantidad,
-                        seriales: JSON.stringify(r.Seriales || []),
+                        fecha: r.FechaHora || new Date().toISOString(),
+                        cantidad: r.Cantidad || 1,
+                        seriales: JSON.stringify(r.Serial ? [r.Serial] : []),
                         upc: r.UPC,
-                        sku: r.SKU,
-                        nombre: r.NOMBRE,
-                        costoUsd: r.CostoUnitarioUSD || 0,
+                        sku: r.SKU || '',
+                        nombre: r.Nombre || 'Producto Sin Nombre',
+                        costoUsd: r.Moneda === 'USD' ? (r.CostoUnitario || 0) : 0,
                         costoCop: r.CostoTotalCOP || 0,
-                        trm: r.TrmAcordada || 1
+                        trm: r.TasaCambio || 1
                     }))
                 });
             }
