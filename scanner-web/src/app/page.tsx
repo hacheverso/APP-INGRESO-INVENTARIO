@@ -1167,7 +1167,7 @@ export default function InventoryScannerApp() {
                             <button onClick={() => setCurrency('COP')} className={`px-3 py-1.5 text-[10px] md:text-xs font-bold rounded-lg transition-colors ${currency === 'COP' ? 'bg-brand-blue text-white' : 'text-gray-500 hover:text-gray-300'}`}>COP</button>
                         </div>
                         <div className={`flex items-center transition-opacity duration-300 ${currency === 'USD' ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
-                            <input type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} onFocus={(e) => e.target.select()} disabled={currency === 'COP'} className="bg-black/20 px-2 py-1.5 rounded-lg text-xs font-bold text-gray-300 outline-none w-[60px] text-center" placeholder="TRM" />
+                            <input type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} onWheel={(e) => e.currentTarget.blur()} onFocus={(e) => e.target.select()} disabled={currency === 'COP'} className="bg-black/20 px-2 py-1.5 rounded-lg text-xs font-bold text-gray-300 outline-none w-[60px] text-center" placeholder="TRM" />
                         </div>
                     </div>
 
@@ -1479,7 +1479,7 @@ export default function InventoryScannerApp() {
                                 )}
                                 {mode === 'MASSIVE' && (
                                     <div className="flex-1 flex gap-4">
-                                        <input ref={qtyRef} type="number" value={qty} onChange={(e) => setQty(e.target.value)} onKeyDown={(e) => handleKeyDown(e, 'qty')} min="1" className="w-[120px] bg-dark-input border border-dark-border rounded-2xl px-5 py-4 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-sans text-2xl font-black text-center text-white placeholder-gray-600" placeholder="1" />
+                                        <input ref={qtyRef} type="number" value={qty} onChange={(e) => setQty(e.target.value)} onWheel={(e) => e.currentTarget.blur()} onKeyDown={(e) => handleKeyDown(e, 'qty')} min="1" className="w-[120px] bg-dark-input border border-dark-border rounded-2xl px-5 py-4 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-sans text-2xl font-black text-center text-white placeholder-gray-600" placeholder="1" />
                                         <button onClick={addRecord} className="flex-1 bg-brand-blue hover:bg-blue-600 text-white font-bold py-4 px-4 rounded-2xl transition-all text-sm uppercase tracking-widest shadow-lg shadow-brand-blue/20 flex items-center justify-center gap-2">
                                             <PackageCheck size={20} /> Ingresar
                                         </button>
@@ -1547,6 +1547,7 @@ export default function InventoryScannerApp() {
                                                                     className="bg-transparent text-emerald-500 font-mono font-black outline-none w-[120px] text-base md:text-lg [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                                     value={group.Records[0]?.CostoUnitario === 0 && !group.Records[0].CostoTotalCOP ? "" : group.Records[0]?.CostoUnitario}
                                                                     onChange={(e) => handleUpdateUpcCost(group.UPC, e.target.value)}
+                                                                    onWheel={(e) => e.currentTarget.blur()}
                                                                 />
                                                             </div>
                                                             <span className="text-[10px] uppercase font-bold tracking-widest text-gray-600 border border-gray-800 px-3 py-1.5 rounded">Costo Unit / {group.Records[0]?.Moneda || 'COP'}</span>
