@@ -1490,10 +1490,10 @@ export default function InventoryScannerApp() {
                         </div>
 
                         {/* Right Panel: Historial Reciente (Dark Terminal Grid) */}
-                        <div className="flex-1 flex flex-col bg-[#0F1014] border border-dark-border rounded-3xl relative overflow-hidden min-h-[500px]">
+                        <div className="flex-1 flex flex-col bg-[#0F1014] border border-dark-border rounded-3xl relative overflow-hidden h-[800px] xl:h-[calc(100vh-140px)] min-h-0 shrink-0">
 
                             {/* Header (Top) */}
-                            <div className="flex justify-between items-center px-8 py-6 border-b border-dark-border bg-[#0A0A0B]/50">
+                            <div className="flex justify-between items-center px-8 py-6 border-b border-dark-border bg-[#0A0A0B]/50 shrink-0">
                                 <h2 className="text-white font-black tracking-[0.2em] text-sm flex items-center gap-3">
                                     <History size={18} className="text-gray-500" /> HISTORIAL RECIENTE
                                 </h2>
@@ -1503,7 +1503,7 @@ export default function InventoryScannerApp() {
                             </div>
 
                             {/* Dynamic List */}
-                            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 pb-32">
+                            <div className="flex-1 overflow-y-auto min-h-0 p-4 md:p-6 space-y-4 pb-32 custom-scrollbar">
                                 {groupedRecords.length === 0 ? (
                                     <div className="h-full flex flex-col items-center justify-center opacity-40">
                                         <Box size={48} className="text-gray-600 mb-4" />
