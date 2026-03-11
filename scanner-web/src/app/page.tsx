@@ -744,7 +744,7 @@ export default function InventoryScannerApp() {
         setDeleteConfirm({ id: null, type: 'record' });
     };
 
-    const exportToExcel = (recordsToExport: InventoryRecord[], loteName: string, showEmptySessionPrompt: boolean = true) => {
+    const exportToExcel = (recordsToExport: InventoryRecord[], loteName: string, sessionProvider: string = "", showEmptySessionPrompt: boolean = true) => {
         if (recordsToExport.length === 0) return alert("No hay registros para exportar.");
 
         const dataToExport = recordsToExport.map(r => {
@@ -769,7 +769,7 @@ export default function InventoryScannerApp() {
                 "COSTO USD": r.Moneda === 'USD' ? r.CostoUnitario : (r.CostoUnitario / r.TasaCambio).toFixed(2), // Aproximación si se entró en COP
                 "CAMBIO": r.TasaCambio,
                 "COSTO COP": r.CostoTotalCOP,
-                "PROVEEDOR": r.Proveedor
+                "PROVEEDOR": sessionProvider || r.Proveedor
             };
         }).sort((a, b) => {
             // Ordenar alfabéticamente por Nombre del Producto
@@ -1266,7 +1266,7 @@ export default function InventoryScannerApp() {
                                                 <ScanLine size={14} /> Reabrir
                                             </button>
                                             <button
-                                                onClick={() => exportToExcel(session.records, session.lote, false)}
+                                                onClick={() => exportToExcel(session.records, session.lote, session.proveedor, false)}
                                                 className="flex-1 flex items-center justify-center gap-2 bg-[#2E7D32]/20 hover:bg-[#2E7D32] text-[#4CAF50] hover:text-white py-2 rounded-xl border border-[#2E7D32]/50 transition-colors font-bold text-xs uppercase"
                                             >
                                                 <FileDown size={14} /> Excel
