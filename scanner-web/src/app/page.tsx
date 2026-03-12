@@ -666,30 +666,77 @@ export default function InventoryScannerApp() {
 
         const activeProvider = proveedor.trim() || 'No Especificado';
 
-        const newRecord: InventoryRecord = {
-            FechaHora: formattedDate,
-            Lote: currentBatch,
-            Proveedor: activeProvider,
-            Tipo: finalTipo,
-            UPC: upcVal,
-            Nombre: matchedProduct?.NOMBRE || 'N/A',
-            SKU: matchedProduct?.SKU || 'N/A',
-            Serial: mode === 'UPC_SERIAL' ? serialVal : "",
-            Cantidad: parsedQty,
-            Nota: note.trim(),
-            ID: uuidv4().substring(0, 8),
-            Moneda: currency,
-            CostoUnitario: parsedCost,
-            TasaCambio: currency === 'USD' ? parsedExRate : 1,
-            CostoTotalCOP: finalCostoTotalCOP,
-            Imagen: matchedProduct?.IMAGEN || ''
-        };
-
         if (proveedor.trim() && !listaProveedores.includes(proveedor.trim())) {
             setListaProveedores(prev => [...prev, proveedor.trim()]);
         }
 
-        setRecords((prev) => [newRecord, ...prev]);
+        if (mode === 'UPC_SERIAL') {
+            const newRecord: InventoryRecord = {
+                FechaHora: formattedDate,
+                Lote: currentBatch,
+                Proveedor: activeProvider,
+                Tipo: finalTipo,
+                UPC: upcVal,
+                Nombre: matchedProduct?.NOMBRE || 'N/A',
+                SKU: matchedProduct?.SKU || 'N/A',
+                Serial: serialVal,
+                Cantidad: parsedQty,
+                Nota: note.trim(),
+                ID: uuidv4().substring(0, 8),
+                Moneda: currency,
+                CostoUnitario: parsedCost,
+                TasaCambio: currency === 'USD' ? parsedExRate : 1,
+                CostoTotalCOP: finalCostoTotalCOP,
+                Imagen: matchedProduct?.IMAGEN || ''
+            };
+            setRecords(prev => [newRecord, ...prev]);
+        } else {
+            // Generación de Seriales Masivos: DDMMYYYY000X
+            const dd = String(now.getDate()).padStart(2, '0');
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const yyyy = now.getFullYear();
+            const datePrefix = `${dd}${mm}${yyyy}`;
+            
+            setRecords(prev => {
+                const newRecordsArr: InventoryRecord[] = [];
+                let currentCounter = 1;
+
+                // Encontrar el contador más alto existente para este prefijo de fecha en los registros actuales
+                const existingSerials = prev.map(r => r.Serial).filter(s => s && s.startsWith(datePrefix));
+                if (existingSerials.length > 0) {
+                    const counters = existingSerials.map(s => parseInt(s.substring(8), 10)).filter(n => !isNaN(n));
+                    if (counters.length > 0) {
+                        currentCounter = Math.max(...counters) + 1;
+                    }
+                }
+
+                for (let i = 0; i < parsedQty; i++) {
+                    const massiveSerial = `${datePrefix}${String(currentCounter).padStart(4, '0')}`;
+                    currentCounter++;
+
+                    newRecordsArr.push({
+                        FechaHora: formattedDate,
+                        Lote: currentBatch,
+                        Proveedor: activeProvider,
+                        Tipo: finalTipo, // "MASIVO"
+                        UPC: upcVal,
+                        Nombre: matchedProduct?.NOMBRE || 'N/A',
+                        SKU: matchedProduct?.SKU || 'N/A',
+                        Serial: massiveSerial,
+                        Cantidad: 1, // Ahora se guardan unitariamente con serial propio
+                        Nota: note.trim(),
+                        ID: uuidv4().substring(0, 8),
+                        Moneda: currency,
+                        CostoUnitario: parsedCost,
+                        TasaCambio: currency === 'USD' ? parsedExRate : 1,
+                        CostoTotalCOP: finalCostoTotalCOP,
+                        Imagen: matchedProduct?.IMAGEN || ''
+                    });
+                }
+                return [...newRecordsArr.reverse(), ...prev];
+            });
+        }
+
         showToast(`Agregado: UPC ${upcVal} (${parsedQty} uds)`, 'success');
         triggerFeedback('success');
         clearFields();
