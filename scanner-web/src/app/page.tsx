@@ -1412,10 +1412,10 @@ export default function InventoryScannerApp() {
                 ) : (
                     <>
                         {/* Left Panel: Inputs (Dark UI Mode) */}
-                        <div className="w-full xl:w-[600px] flex flex-col gap-6 flex-shrink-0 animate-in slide-in-from-left-4 duration-300">
+                        <div className="w-full xl:w-[600px] flex flex-col gap-6 flex-shrink-0 animate-in slide-in-from-left-4 duration-300 xl:h-full">
 
                             {/* Top Split Section: Total (Left) vs Controls (Right) */}
-                            <div className="flex gap-4 h-[120px]">
+                            <div className="flex gap-4 min-h-[120px] shrink-0">
                                 {/* Total Ingresado Blue Card */}
                                 <div className="flex-1 bg-blue-600 rounded-3xl p-6 text-white flex justify-between items-end shadow-[0_0_30px_rgba(37,99,235,0.15)] relative overflow-hidden group">
                                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full transform translate-x-1/3 -translate-y-1/3 group-hover:bg-white/10 transition-colors"></div>
@@ -1449,7 +1449,7 @@ export default function InventoryScannerApp() {
                             </div>
 
                             {/* Big Dark Canvas Box (Ghost Input) */}
-                            <div className={`flex-1 bg-dark-input rounded-3xl border border-dark-border p-6 flex flex-col items-center justify-center relative min-h-[450px] transition-all duration-300 group overflow-hidden ${isFlashing && scanStatus === 'success' ? 'ring-2 ring-emerald-500/50 bg-emerald-900/10' : ''} ${isFlashing && scanStatus === 'error' ? 'ring-2 ring-red-500/50 bg-red-900/10' : ''}`}>
+                            <div className={`flex-1 bg-dark-input rounded-3xl border border-dark-border p-6 flex flex-col items-center justify-center relative min-h-[300px] transition-all duration-300 group overflow-hidden ${isFlashing && scanStatus === 'success' ? 'ring-2 ring-emerald-500/50 bg-emerald-900/10' : ''} ${isFlashing && scanStatus === 'error' ? 'ring-2 ring-red-500/50 bg-red-900/10' : ''}`}>
 
                                 {/* Tarjeta de Producto Reconocido (Oculta el input visualmente cuando hay match) */}
                                 {matchedProduct ? (
@@ -1506,7 +1506,7 @@ export default function InventoryScannerApp() {
                             </div>
 
                             {/* Inputs Flotantes/Ocultos para Serial y QTY (Aparecen si Masivo o Serializado lo requiere) */}
-                            <div className="flex gap-4">
+                            <div className="flex gap-4 shrink-0 pb-6 lg:pb-0">
                                 {mode === 'UPC_SERIAL' && (
                                     <div className="flex-1">
                                         <input ref={serialRef} type="text" value={serial} onChange={(e) => setSerial(e.target.value)} onKeyDown={(e) => handleKeyDown(e, 'serial')} className="w-full bg-dark-input border border-dark-border rounded-2xl px-5 py-4 outline-none focus:ring-1 focus:ring-brand-blue focus:border-brand-blue transition-all font-mono text-xl tracking-widest text-brand-blue placeholder-gray-600 text-center uppercase" placeholder="ESCANEAR SERIAL AQUÍ" />
