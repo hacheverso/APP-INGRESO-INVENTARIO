@@ -1453,16 +1453,16 @@ export default function InventoryScannerApp() {
 
                                 {/* Tarjeta de Producto Reconocido (Oculta el input visualmente cuando hay match) */}
                                 {matchedProduct ? (
-                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-6 z-30 bg-dark-input rounded-3xl">
-                                        <div className="flex flex-col items-center gap-4 text-center translate-y-[-10px] animate-in slide-in-from-bottom-4 duration-300">
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-6 z-30 bg-dark-input rounded-3xl overflow-y-auto custom-scrollbar">
+                                        <div className="flex flex-col items-center gap-4 text-center mt-auto mb-auto animate-in slide-in-from-bottom-4 duration-300 w-full">
                                             {matchedProduct.IMAGEN && (
-                                                <div className="w-[180px] h-[180px] rounded-2xl overflow-hidden bg-white/5 border border-white/10 shadow-2xl p-4 flex items-center justify-center">
+                                                <div className="w-[140px] h-[140px] rounded-2xl overflow-hidden bg-white/5 border border-white/10 shadow-2xl p-4 flex items-center justify-center shrink-0">
                                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                                     <img src={matchedProduct.IMAGEN} alt={matchedProduct.NOMBRE} className="max-w-full max-h-full object-contain" />
                                                 </div>
                                             )}
-                                            <h2 className="text-3xl md:text-4xl font-black text-white leading-tight uppercase drop-shadow-xl">{matchedProduct.NOMBRE}</h2>
-                                            <span className="text-brand-blue font-mono text-xl tracking-widest">{matchedProduct.UPC}</span>
+                                            <h2 className="text-2xl md:text-3xl font-black text-white leading-tight uppercase drop-shadow-xl">{matchedProduct.NOMBRE}</h2>
+                                            <span className="text-brand-blue font-mono text-lg md:text-xl tracking-widest">{matchedProduct.UPC}</span>
                                         </div>
                                     </div>
                                 ) : null}
