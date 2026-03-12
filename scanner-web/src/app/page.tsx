@@ -1206,7 +1206,7 @@ export default function InventoryScannerApp() {
             </header>
 
             {/* Container Principal Condicionado a la Vista */}
-            <main className="flex-1 flex flex-col lg:flex-row gap-6 p-6 lg:p-8 min-h-0 container mx-auto max-w-[1600px] overflow-hidden">
+            <main className="flex-1 flex flex-col lg:flex-row gap-6 py-6 px-4 md:px-6 2xl:px-10 w-full min-h-0 overflow-hidden">
 
                 {view === 'HISTORY' ? (
                     <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
@@ -1525,7 +1525,7 @@ export default function InventoryScannerApp() {
                         </div>
 
                         {/* Right Panel: Historial Reciente (Dark Terminal Grid) */}
-                        <div className="flex-1 flex flex-col bg-[#0F1014] border border-dark-border rounded-3xl relative overflow-hidden h-[800px] xl:h-[calc(100vh-140px)] min-h-0 shrink-0">
+                        <div className="flex-1 flex flex-col bg-[#0F1014] border border-dark-border rounded-3xl relative overflow-hidden h-[600px] lg:h-full lg:max-h-[calc(100vh-120px)] min-h-0 shrink-0">
 
                             {/* Header (Top) */}
                             <div className="flex justify-between items-center px-8 py-6 border-b border-dark-border bg-[#0A0A0B]/50 shrink-0">
@@ -1647,11 +1647,11 @@ export default function InventoryScannerApp() {
                                                 {group.Records.map((r, itemIndex) => {
                                                     const isMostRecentScanned = groupIndex === 0 && itemIndex === 0;
                                                     return (
-                                                        <div key={r.ID} className={`group/tag flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all duration-300 ${isMostRecentScanned ? 'bg-brand-blue text-white shadow-[0_0_20px_rgba(37,99,235,0.4)] border-transparent scale-[1.02]' : 'bg-[#0A0A0B] border-dark-border text-gray-400 hover:border-gray-700 hover:text-gray-200'}`}>
-                                                            <span className="font-mono text-xs font-bold tracking-widest uppercase">
+                                                        <div key={r.ID} className={`group/tag flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all duration-300 max-w-full ${isMostRecentScanned ? 'bg-brand-blue text-white shadow-[0_0_20px_rgba(37,99,235,0.4)] border-transparent scale-[1.02]' : 'bg-[#0A0A0B] border-dark-border text-gray-400 hover:border-gray-700 hover:text-gray-200'}`}>
+                                                            <span className="font-mono text-xs font-bold tracking-widest uppercase break-all truncate">
                                                                 {r.Tipo === 'SERIAL' ? r.Serial : `MASIVO x${r.Cantidad}`}
                                                             </span>
-                                                            <button onClick={(e) => handleDeleteRecord(r.ID, e)} className={`transition-opacity ${isMostRecentScanned ? 'opacity-100 text-white/70 hover:text-white' : 'opacity-0 group-hover/tag:opacity-100 hover:text-red-400'}`}>
+                                                            <button onClick={(e) => handleDeleteRecord(r.ID, e)} className={`flex-shrink-0 transition-opacity ${isMostRecentScanned ? 'opacity-100 text-white/70 hover:text-white' : 'opacity-0 group-hover/tag:opacity-100 hover:text-red-400'}`}>
                                                                 <X size={14} strokeWidth={3} />
                                                             </button>
                                                         </div>
