@@ -1209,7 +1209,7 @@ export default function InventoryScannerApp() {
             <main className="flex-1 flex flex-col lg:flex-row gap-6 p-6 lg:p-8 min-h-0 container mx-auto max-w-[1600px] overflow-hidden">
 
                 {view === 'HISTORY' ? (
-                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
                         <div className="flex items-center gap-3 text-white mb-2">
                             <History size={24} className="text-brand-blue" />
                             <h2 className="text-2xl font-black tracking-widest uppercase">Historial de Ingresos</h2>
@@ -1289,6 +1289,14 @@ export default function InventoryScannerApp() {
                                 ))}
                             </div>
                         )}
+
+                        {/* Espaciado Inferior y Créditos */}
+                        <div className="mt-8 pb-12 flex flex-col items-center justify-center opacity-40 hover:opacity-100 transition-opacity flex-shrink-0">
+                            <p className="text-[9px] font-black text-gray-500 tracking-[0.3em] uppercase mb-1">INGRESADOS V1.0</p>
+                            <p className="text-[10px] font-bold text-gray-400 tracking-widest flex items-center gap-1.5 uppercase">
+                                Creado por <span className="text-white bg-black px-2 py-0.5 rounded border border-gray-800">Hacheverso</span>
+                            </p>
+                        </div>
                     </div>
                 ) : view === 'PRODUCTS' ? (
                     <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
@@ -1392,6 +1400,14 @@ export default function InventoryScannerApp() {
                                 </div>
                             </div>
                         )}
+
+                        {/* Espaciado Inferior y Créditos */}
+                        <div className="mt-8 pb-12 flex flex-col items-center justify-center opacity-40 hover:opacity-100 transition-opacity flex-shrink-0">
+                            <p className="text-[9px] font-black text-gray-500 tracking-[0.3em] uppercase mb-1">INGRESADOS V1.0</p>
+                            <p className="text-[10px] font-bold text-gray-400 tracking-widest flex items-center gap-1.5 uppercase">
+                                Creado por <span className="text-white bg-black px-2 py-0.5 rounded border border-gray-800">Hacheverso</span>
+                            </p>
+                        </div>
                     </div>
                 ) : (
                     <>
