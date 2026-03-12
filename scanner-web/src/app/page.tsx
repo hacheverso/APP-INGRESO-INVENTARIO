@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning } from 'lucide-react';
+import { Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning, Search } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { v4 as uuidv4 } from 'uuid';
@@ -84,6 +84,7 @@ export default function InventoryScannerApp() {
     const [matchedProduct, setMatchedProduct] = useState<Product | null>(null);
     const [showNewProductModal, setShowNewProductModal] = useState(false);
     const [newProductForm, setNewProductForm] = useState({ UPC: '', NOMBRE: '', SKU: '', IMAGEN: '' });
+    const [productSearchTerm, setProductSearchTerm] = useState("");
 
     // Flash Feedback System (Phase 10)
     const [scanStatus, setScanStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -1290,10 +1291,22 @@ export default function InventoryScannerApp() {
                         )}
                     </div>
                 ) : view === 'PRODUCTS' ? (
-                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar">
-                        <div className="flex items-center gap-3 text-white mb-2">
-                            <PackageCheck size={24} className="text-brand-blue" />
-                            <h2 className="text-2xl font-black tracking-widest uppercase">Catálogo de Productos Maestro</h2>
+                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
+                        <div className="flex items-center justify-between mb-2 gap-4 flex-wrap">
+                            <div className="flex items-center gap-3 text-white">
+                                <PackageCheck size={24} className="text-brand-blue" />
+                                <h2 className="text-2xl font-black tracking-widest uppercase">Catálogo de Productos Maestro</h2>
+                            </div>
+                            <div className="flex-1 max-w-md relative">
+                                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                                <input
+                                    type="text"
+                                    value={productSearchTerm}
+                                    onChange={(e) => setProductSearchTerm(e.target.value)}
+                                    placeholder="Buscar por UPC o Nombre..."
+                                    className="w-full bg-dark-input border border-dark-border rounded-xl pl-12 pr-4 py-3 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-medium text-white placeholder-gray-600 shadow-inner"
+                                />
+                            </div>
                         </div>
 
                         {Object.keys(productDB).length === 0 ? (
@@ -1302,7 +1315,7 @@ export default function InventoryScannerApp() {
                                 <p className="text-gray-400 font-bold uppercase tracking-widest">El catálogo está vacío.</p>
                             </div>
                         ) : (
-                            <div className="bg-dark-card border border-dark-border rounded-3xl overflow-hidden shadow-2xl">
+                            <div className="bg-dark-card border border-dark-border rounded-3xl overflow-hidden shadow-2xl flex-shrink-0">
                                 <div className="overflow-x-auto min-w-full">
                                     <table className="w-full text-left border-collapse">
                                         <thead>
@@ -1315,7 +1328,13 @@ export default function InventoryScannerApp() {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-dark-border text-gray-300">
-                                            {Object.values(productDB).map((prod) => (
+                                            {Object.values(productDB)
+                                                .filter(p => {
+                                                    if (!productSearchTerm) return true;
+                                                    const term = productSearchTerm.toLowerCase();
+                                                    return p.NOMBRE.toLowerCase().includes(term) || p.UPC.includes(term);
+                                                })
+                                                .map((prod) => (
                                                 <tr key={prod.UPC} className="hover:bg-white/5 transition-colors group">
                                                     <td className="px-6 py-3">
                                                         <div className="w-12 h-12 bg-white rounded flex items-center justify-center border border-gray-700 overflow-hidden mx-auto">
