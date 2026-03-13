@@ -986,35 +986,33 @@ export default function InventoryScannerApp() {
     // COMPUTE GROUPS LOGIC
     // --------------------------------------------------------------------
     const groupedRecords = React.useMemo(() => {
-        const groupsMap: Record<string, ProductGroup> = {};
-
-        // Iteramos los records de manera inversa para mantener el orden cronológico descendente general
-        [...records].forEach(record => {
-            const groupKey = record.UPC;
-            if (!groupsMap[groupKey]) {
-                groupsMap[groupKey] = {
-                    UPC: groupKey,
+        const groups: ProductGroup[] = [];
+        
+        // records ya viene ordenado LIFO (último escaneado en índice 0)
+        records.forEach(record => {
+            if (groups.length > 0 && groups[groups.length - 1].UPC === record.UPC) {
+                // Sigue siendo el mismo producto consecutivo en la línea de tiempo temporal
+                const currentGroup = groups[groups.length - 1];
+                currentGroup.Records.push(record);
+                currentGroup.TotalUnidades += Number(record.Cantidad) || 0;
+                currentGroup.CostoAcumuladoCOP += Number(record.CostoTotalCOP) || 0;
+            } else {
+                // Producto diferente, o inicio de sesión: crear nuevo bloque temporal
+                groups.push({
+                    UPC: record.UPC,
                     Nombre: record.Nombre,
                     SKU: record.SKU,
-                    Records: [],
-                    TotalUnidades: 0,
-                    CostoAcumuladoCOP: 0,
-                    Imagen: productDB[groupKey]?.IMAGEN || '',
-                    IsExpanded: !!expandedGroups[groupKey]
-                };
+                    Records: [record],
+                    TotalUnidades: Number(record.Cantidad) || 0,
+                    CostoAcumuladoCOP: Number(record.CostoTotalCOP) || 0,
+                    Imagen: productDB[record.UPC]?.IMAGEN || '',
+                    IsExpanded: false // No need global expand state for temporal chunks
+                });
             }
-            groupsMap[groupKey].Records.unshift(record); // Ponemos el último escaneado de ese grupo de primero
-            groupsMap[groupKey].TotalUnidades += Number(record.Cantidad) || 0;
-            groupsMap[groupKey].CostoAcumuladoCOP += Number(record.CostoTotalCOP) || 0;
         });
 
-        // Convertimos el map a un Array y lo ordenamos basado en el último registro agregado (Last in First Out)
-        return Object.values(groupsMap).sort((a, b) => {
-            const timeA = new Date(a.Records[0].FechaHora.replace(' ', 'T')).getTime();
-            const timeB = new Date(b.Records[0].FechaHora.replace(' ', 'T')).getTime();
-            return timeB - timeA;
-        });
-    }, [records, expandedGroups, productDB]);
+        return groups;
+    }, [records, productDB]);
 
 
     const inputClass = "w-full bg-gray-50/50 dark:bg-dark-input border border-gray-200 dark:border-dark-border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-blue focus:bg-white dark:focus:bg-dark-bg transition-all text-slate-900 dark:text-gray-100 placeholder-gray-400 font-medium";
@@ -1593,7 +1591,7 @@ export default function InventoryScannerApp() {
                                     </div>
                                 ) : (
                                     groupedRecords.map((group, groupIndex) => (
-                                        <div key={group.UPC} className={`bg-transparent border rounded-2xl p-5 md:p-6 flex flex-col relative overflow-hidden transition-all duration-300 ${groupIndex === 0 ? 'border-brand-blue/30 bg-brand-blue/5' : 'border-[#18181A] opacity-70 hover:opacity-100'}`}>
+                                        <div key={`${group.UPC}-${groupIndex}`} className={`bg-transparent border rounded-2xl p-5 md:p-6 flex flex-col relative overflow-hidden transition-all duration-300 ${groupIndex === 0 ? 'border-brand-blue/30 bg-brand-blue/5' : 'border-[#18181A] opacity-70 hover:opacity-100'}`}>
 
                                             {/* Borde luminiscente izquierdo (Solo en el producto activo/más reciente) */}
                                             {groupIndex === 0 && (
