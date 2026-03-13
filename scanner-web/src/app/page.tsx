@@ -988,12 +988,11 @@ export default function InventoryScannerApp() {
     const groupedRecords = React.useMemo(() => {
         const groups: ProductGroup[] = [];
         
-        // records ya viene ordenado LIFO (último escaneado en índice 0)
         records.forEach(record => {
             if (groups.length > 0 && groups[groups.length - 1].UPC === record.UPC) {
                 // Sigue siendo el mismo producto consecutivo en la línea de tiempo temporal
                 const currentGroup = groups[groups.length - 1];
-                currentGroup.Records.push(record);
+                currentGroup.Records.unshift(record); // Los más viejos al principio, el más nuevo al final
                 currentGroup.TotalUnidades += Number(record.Cantidad) || 0;
                 currentGroup.CostoAcumuladoCOP += Number(record.CostoTotalCOP) || 0;
             } else {
@@ -1687,10 +1686,9 @@ export default function InventoryScannerApp() {
                                                 </div>
                                             </div>
 
-                                            {/* Seriales Grid (The Core Clone Feature) */}
                                             <div className="flex flex-wrap gap-2 pl-2 mt-2">
                                                 {group.Records.map((r, itemIndex) => {
-                                                    const isMostRecentScanned = groupIndex === 0 && itemIndex === 0;
+                                                    const isMostRecentScanned = groupIndex === 0 && itemIndex === group.Records.length - 1;
                                                     return (
                                                         <div key={r.ID} className={`group/tag flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all duration-300 max-w-full ${isMostRecentScanned ? 'bg-brand-blue text-white shadow-[0_0_20px_rgba(37,99,235,0.4)] border-transparent scale-[1.02]' : 'bg-[#0A0A0B] border-dark-border text-gray-400 hover:border-gray-700 hover:text-gray-200'}`}>
                                                             <span className="font-mono text-xs font-bold tracking-widest uppercase break-all truncate">
