@@ -986,31 +986,37 @@ export default function InventoryScannerApp() {
     // COMPUTE GROUPS LOGIC
     // --------------------------------------------------------------------
     const groupedRecords = React.useMemo(() => {
-        const groups: ProductGroup[] = [];
-        
-        records.forEach(record => {
-            if (groups.length > 0 && groups[groups.length - 1].UPC === record.UPC) {
-                // Sigue siendo el mismo producto consecutivo en la línea de tiempo temporal
-                const currentGroup = groups[groups.length - 1];
-                currentGroup.Records.unshift(record); // Los más viejos al principio, el más nuevo al final
-                currentGroup.TotalUnidades += Number(record.Cantidad) || 0;
-                currentGroup.CostoAcumuladoCOP += Number(record.CostoTotalCOP) || 0;
-            } else {
-                // Producto diferente, o inicio de sesión: crear nuevo bloque temporal
-                groups.push({
-                    UPC: record.UPC,
+        const groupsMap: Record<string, ProductGroup> = {};
+
+        // records viene ordenado LIFO (último escaneado índice 0)
+        // Iteramos en reverso (el más viejo primero) para que array de Records quede cronológico natural
+        [...records].reverse().forEach(record => {
+            const groupKey = record.UPC;
+            if (!groupsMap[groupKey]) {
+                groupsMap[groupKey] = {
+                    UPC: groupKey,
                     Nombre: record.Nombre,
                     SKU: record.SKU,
-                    Records: [record],
-                    TotalUnidades: Number(record.Cantidad) || 0,
-                    CostoAcumuladoCOP: Number(record.CostoTotalCOP) || 0,
-                    Imagen: productDB[record.UPC]?.IMAGEN || '',
-                    IsExpanded: false // No need global expand state for temporal chunks
-                });
+                    Records: [],
+                    TotalUnidades: 0,
+                    CostoAcumuladoCOP: 0,
+                    Imagen: productDB[groupKey]?.IMAGEN || '',
+                    IsExpanded: false
+                };
             }
+            groupsMap[groupKey].Records.push(record);
+            groupsMap[groupKey].TotalUnidades += Number(record.Cantidad) || 0;
+            groupsMap[groupKey].CostoAcumuladoCOP += Number(record.CostoTotalCOP) || 0;
         });
 
-        return groups;
+        // Convertimos el map a Array y ordenamos para que el grupo con el registro MÁS RECIENTE quede de primero
+        return Object.values(groupsMap).sort((a, b) => {
+            const lastRecordA = a.Records[a.Records.length - 1];
+            const lastRecordB = b.Records[b.Records.length - 1];
+            const timeA = new Date(lastRecordA.FechaHora.replace(' ', 'T')).getTime();
+            const timeB = new Date(lastRecordB.FechaHora.replace(' ', 'T')).getTime();
+            return timeB - timeA;
+        });
     }, [records, productDB]);
 
 
