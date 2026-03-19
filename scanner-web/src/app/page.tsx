@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning, Search } from 'lucide-react';
+import { Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning, Search, LogOut } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { v4 as uuidv4 } from 'uuid';
@@ -71,6 +71,7 @@ export default function InventoryScannerApp() {
     const [records, setRecords] = useState<InventoryRecord[]>([]);
     const [mode, setMode] = useState<ScanMode>('UPC_SERIAL');
     const [view, setView] = useState<AppView>('SCANNER');
+    const [currentUser, setCurrentUser] = useState<{ id: string; email: string; name?: string } | null>(null);
 
     // Finanzas Globales de Sesión
     const [currency, setCurrency] = useState<Currency>('USD');
@@ -126,6 +127,11 @@ export default function InventoryScannerApp() {
         setIsClient(true);
         const today = new Date().toISOString().split('T')[0];
         setBatchName(`Ingreso ${today}`);
+
+        // Auth: fetch current user
+        fetch('/api/auth/me').then(r => r.json()).then(data => {
+            if (data.success && data.user) setCurrentUser(data.user);
+        }).catch(() => {});
 
         // Pre-cargar voces de TTS (Fix para macOS/Safari donde la primera vez retorna vacío)
         if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -1346,6 +1352,23 @@ export default function InventoryScannerApp() {
                         </button>
                         <button onClick={() => setIsAudioEnabled(!isAudioEnabled)} className={`w-[36px] h-[36px] border rounded-xl transition-colors flex items-center justify-center ${isAudioEnabled ? 'bg-[#151E32] border-brand-blue/30 text-brand-blue hover:bg-brand-blue/20' : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-400'}`} title={isAudioEnabled ? "Silenciar Asistente" : "Activar Asistente"}>
                             {isAudioEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                        </button>
+                    </div>
+
+                    {/* Auth: User + Logout */}
+                    <div className="flex items-center gap-2">
+                        {currentUser && (
+                            <span className="text-[9px] font-bold tracking-widest uppercase text-gray-600 hidden md:inline">{currentUser.email}</span>
+                        )}
+                        <button
+                            onClick={async () => {
+                                await fetch('/api/auth/logout', { method: 'POST' });
+                                window.location.href = '/login';
+                            }}
+                            className="w-[36px] h-[36px] border rounded-xl transition-colors flex items-center justify-center bg-dark-input border-dark-border text-gray-500 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10"
+                            title="Cerrar sesión"
+                        >
+                            <LogOut size={16} />
                         </button>
                     </div>
                 </div>

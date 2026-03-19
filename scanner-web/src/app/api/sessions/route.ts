@@ -1,37 +1,41 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
     try {
+        const session = await getSession();
+        if (!session) return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
+
         const sessions = await prisma.historySession.findMany({
+            where: { userId: session.userId },
             include: {
-                records: true // Bring all records within each session
+                records: true
             },
             orderBy: {
                 createdAt: 'desc'
             }
         });
 
-        // Map the Prisma ORM structure back to the shape expected by the frontend's HistorySession interface
-        const formattedSessions = sessions.map(session => ({
-            id: session.id, // Keep the UUID
-            fecha: session.date,
-            lote: session.batchName || "",
-            proveedor: session.provider || "",
-            totalRecords: session.records.length,
-            totalUnidades: session.totalItems,
-            costoTotalCOP: session.totalCop,
-            monedaBase: 'COP', // Resumed base currency
-            records: session.records.map(r => {
+        const formattedSessions = sessions.map(s => ({
+            id: s.id,
+            fecha: s.date,
+            lote: s.batchName || "",
+            proveedor: s.provider || "",
+            totalRecords: s.records.length,
+            totalUnidades: s.totalItems,
+            costoTotalCOP: s.totalCop,
+            monedaBase: 'COP',
+            records: s.records.map(r => {
                 const serialesArray = JSON.parse(r.seriales || '[]');
                 const isUSD = r.costoUsd > 0;
                 return {
                     ID: r.id,
                     FechaHora: r.fecha,
-                    Lote: session.batchName || "",
-                    Proveedor: session.provider || "",
+                    Lote: s.batchName || "",
+                    Proveedor: s.provider || "",
                     Tipo: "NUBESYNC",
                     UPC: r.upc,
                     Nombre: r.nombre,
@@ -43,7 +47,7 @@ export async function GET() {
                     CostoUnitario: isUSD ? r.costoUsd : (r.cantidad > 0 ? r.costoCop / r.cantidad : 0),
                     TasaCambio: r.trm || 1,
                     CostoTotalCOP: r.costoCop,
-                    Imagen: "" // Ignored in history history view
+                    Imagen: ""
                 };
             })
         }));
@@ -57,6 +61,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
     try {
+        const authSession = await getSession();
+        if (!authSession) return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
+
         const body = await req.json();
         const { id, date, batchName, proveedor, totalItems, totalCop, records } = body;
 
@@ -64,15 +71,13 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, error: 'Invalid session payload' }, { status: 400 });
         }
 
-        // Use Prisma Transaction: Delete existing session (if re-saving), then create fresh
         const newSession = await prisma.$transaction(async (tx) => {
-
-            // 0. Delete existing session if it exists (Cascade deletes its records too)
+            // Delete existing session if re-saving (Cascade deletes records)
             await tx.historySession.deleteMany({
-                where: { id: id }
+                where: { id: id, userId: authSession.userId }
             });
 
-            // 1. Create the parent session
+            // Create the parent session
             const session = await tx.historySession.create({
                 data: {
                     id: id,
@@ -80,15 +85,16 @@ export async function POST(req: Request) {
                     batchName: batchName || null,
                     provider: proveedor || null,
                     totalItems: totalItems,
-                    totalCop: totalCop
+                    totalCop: totalCop,
+                    userId: authSession.userId
                 }
             });
 
-            // 2. Insert all child records tied to the session id
+            // Insert all child records
             if (records.length > 0) {
                 await tx.historyRecord.createMany({
                     data: records.map((r: any) => ({
-                        id: crypto.randomUUID(), // Always generate fresh UUIDs for records
+                        id: crypto.randomUUID(),
                         sessionId: session.id,
                         fecha: r.FechaHora || new Date().toISOString(),
                         cantidad: r.Cantidad || 1,

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,12 +17,14 @@ BigInt.prototype.toJSON = function () {
 
 export async function GET() {
     try {
-        const products = await prisma.product.findMany();
+        const session = await getSession();
+        if (!session) return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
 
-        // Transform incoming DB array directly into the dictionary format expected by the frontend
-        // format: { "UPC-123": { UPC: "...", SKU: "...", NOMBRE: "...", IMAGEN: "..." } }
+        const products = await prisma.product.findMany({
+            where: { userId: session.userId }
+        });
+
         const productDB: Record<string, any> = {};
-
         products.forEach(p => {
             productDB[p.upc] = {
                 UPC: p.upc,
@@ -41,13 +44,16 @@ export async function GET() {
 
 export async function POST(req: Request) {
     try {
+        const session = await getSession();
+        if (!session) return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
+
         const body = await req.json();
 
         // Branch 1: Batch Process (Array)
         if (Array.isArray(body)) {
             const operations = body.map((item: any) => {
                 return prisma.product.upsert({
-                    where: { upc: item.UPC },
+                    where: { upc_userId: { upc: item.UPC, userId: session.userId } },
                     update: {
                         sku: item.SKU || '',
                         name: item.NOMBRE,
@@ -59,12 +65,12 @@ export async function POST(req: Request) {
                         sku: item.SKU || '',
                         name: item.NOMBRE,
                         image: item.IMAGEN || null,
-                        lastCost: item.LastCost || 0
+                        lastCost: item.LastCost || 0,
+                        userId: session.userId
                     }
                 });
             });
 
-            // Execute all upserts cleanly
             const results = await prisma.$transaction(operations);
             return NextResponse.json({ success: true, count: results.length, data: results });
         } 
@@ -77,7 +83,7 @@ export async function POST(req: Request) {
         }
 
         const product = await prisma.product.upsert({
-            where: { upc: UPC },
+            where: { upc_userId: { upc: UPC, userId: session.userId } },
             update: {
                 sku: SKU || '',
                 name: NOMBRE,
@@ -89,7 +95,8 @@ export async function POST(req: Request) {
                 sku: SKU || '',
                 name: NOMBRE,
                 image: IMAGEN || null,
-                lastCost: body.LastCost || 0
+                lastCost: body.LastCost || 0,
+                userId: session.userId
             }
         });
 
@@ -102,6 +109,9 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
     try {
+        const session = await getSession();
+        if (!session) return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
+
         const body = await req.json();
         const { UPC, SKU, NOMBRE, IMAGEN } = body;
 
@@ -110,7 +120,7 @@ export async function PUT(req: Request) {
         }
 
         const updatedProduct = await prisma.product.update({
-            where: { upc: UPC },
+            where: { upc_userId: { upc: UPC, userId: session.userId } },
             data: {
                 sku: SKU || '',
                 name: NOMBRE,
@@ -127,6 +137,9 @@ export async function PUT(req: Request) {
 
 export async function DELETE(req: Request) {
     try {
+        const session = await getSession();
+        if (!session) return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
+
         const url = new URL(req.url);
         const upc = url.searchParams.get('upc');
 
@@ -136,12 +149,14 @@ export async function DELETE(req: Request) {
 
         // Bulk delete: ?upc=ALL
         if (upc === 'ALL') {
-            const result = await prisma.product.deleteMany({});
+            const result = await prisma.product.deleteMany({
+                where: { userId: session.userId }
+            });
             return NextResponse.json({ success: true, message: `${result.count} productos eliminados del catálogo.`, count: result.count });
         }
 
         await prisma.product.delete({
-            where: { upc: upc }
+            where: { upc_userId: { upc: upc, userId: session.userId } }
         });
 
         return NextResponse.json({ success: true, message: "Product deleted successfully" });

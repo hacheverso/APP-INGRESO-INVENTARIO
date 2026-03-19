@@ -7,26 +7,46 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  products Product[]
+  sessions HistorySession[]
+}
+
 model Product {
-  id        String   @id @default(cuid()) // Simple CUID for Postgres
-  upc       String   @unique
+  id        String   @id @default(cuid())
+  upc       String
   sku       String
   name      String
   image     String?
   lastCost  Float    @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  userId String   @default("")
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([upc, userId])
 }
 
 model HistorySession {
-  id         String   @id @default(uuid()) // Uses existing UUIDs from local storage logic
-  date       String   // ISO string date currently used
+  id         String   @id @default(uuid())
+  date       String
   batchName  String?
   provider   String?
   totalItems Int
   totalCop   Float
   records    HistoryRecord[]
   createdAt  DateTime @default(now())
+
+  userId String   @default("")
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model HistoryRecord {
@@ -36,7 +56,7 @@ model HistoryRecord {
   
   fecha     String
   cantidad  Int
-  seriales  String   // JSON stringified array of serials or empty JSON array '[]'
+  seriales  String
   upc       String
   sku       String
   nombre    String
