@@ -78,6 +78,7 @@ export default function InventoryScannerApp() {
 
     // History and Navigation State
     const [savedSessions, setSavedSessions] = useState<HistorySession[]>([]);
+    const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
 
     // Product Database State
     const [productDB, setProductDB] = useState<Record<string, Product>>({});
@@ -936,7 +937,8 @@ export default function InventoryScannerApp() {
         const currentTotalUnidades = records.reduce((acc, curr) => acc + curr.Cantidad, 0);
         const currentCostoTotalCOP = records.reduce((acc, curr) => acc + curr.CostoTotalCOP, 0);
 
-        const newSessionId = Date.now().toString();
+        // Reuse original session ID if re-saving a reopened session
+        const newSessionId = editingSessionId || Date.now().toString();
 
         const newSessionPayload = {
             id: newSessionId,
@@ -971,11 +973,13 @@ export default function InventoryScannerApp() {
                     records: [...records]
                 };
 
-                setSavedSessions(prev => [formattedNewSession, ...prev]);
+                // Remove old version if re-saving, then add updated
+                setSavedSessions(prev => [formattedNewSession, ...prev.filter(s => s.id !== newSessionId)]);
                 setRecords([]); // Vaciamos la sesión activa localmente solo si guardó con éxito en la nube
+                setEditingSessionId(null); // Reset editing state
                 localStorage.removeItem('scanner_backup'); // Limpiamos backup local
                 setView('HISTORY');
-                showToast("Sesión Guardada permanentemente en Neon DB", "success");
+                showToast(editingSessionId ? "Sesión actualizada en Neon DB" : "Sesión Guardada permanentemente en Neon DB", "success");
             } else {
                 showToast("Error al guardar la sesión: " + data.error, "error");
             }
@@ -994,10 +998,10 @@ export default function InventoryScannerApp() {
         setBatchName(session.lote);
         setProveedor(session.proveedor || '');
         setCurrency(session.monedaBase);
+        setEditingSessionId(session.id); // Track original ID for re-save
         setView('SCANNER');
 
-        // The session is kept in history. If the user edits and clicks save again, it will duplicate it as a new distinct session, which is safer than deleting the original.
-        showToast(`Sesión reabierta: ${session.lote}`, "info");
+        showToast(`Sesión reabierta para edición: ${session.lote}`, "info");
     };
 
     const deleteHistorySession = (id: string, e: React.MouseEvent) => {

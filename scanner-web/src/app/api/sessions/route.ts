@@ -64,8 +64,13 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, error: 'Invalid session payload' }, { status: 400 });
         }
 
-        // Use Prisma Transaction to ensure the Session and all its Records are created together
+        // Use Prisma Transaction: Delete existing session (if re-saving), then create fresh
         const newSession = await prisma.$transaction(async (tx) => {
+
+            // 0. Delete existing session if it exists (Cascade deletes its records too)
+            await tx.historySession.deleteMany({
+                where: { id: id }
+            });
 
             // 1. Create the parent session
             const session = await tx.historySession.create({
@@ -83,7 +88,7 @@ export async function POST(req: Request) {
             if (records.length > 0) {
                 await tx.historyRecord.createMany({
                     data: records.map((r: any) => ({
-                        id: r.ID || crypto.randomUUID(),
+                        id: crypto.randomUUID(), // Always generate fresh UUIDs for records
                         sessionId: session.id,
                         fecha: r.FechaHora || new Date().toISOString(),
                         cantidad: r.Cantidad || 1,
@@ -103,10 +108,6 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ success: true, data: newSession });
     } catch (error: any) {
-        // If it's a unique constraint violation (session already exists), catch it
-        if (error.code === 'P2002') {
-            return NextResponse.json({ success: false, error: 'Session ID already exists in the database' }, { status: 409 });
-        }
         console.error("Error creating session transaction:", error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
