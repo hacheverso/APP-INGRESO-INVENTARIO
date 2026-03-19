@@ -1733,13 +1733,20 @@ export default function InventoryScannerApp() {
                                 <h2 className="text-white font-black tracking-[0.2em] text-sm flex items-center gap-3">
                                     <History size={18} className="text-gray-500" /> HISTORIAL RECIENTE
                                 </h2>
-                                <button onClick={() => setDeleteConfirm({ id: 'all', type: 'session' })} className="flex items-center gap-2 text-gray-500 hover:text-red-400 transition-all px-4 py-2 bg-dark-input rounded-xl hover:bg-red-500/10 border border-dark-border hover:border-red-500/30 text-[10px] font-bold uppercase tracking-widest">
-                                    <Trash2 size={14} /> Vaciar Todo
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    {records.length > 0 && (
+                                        <button onClick={saveCurrentSessionToHistory} className="flex items-center gap-2 text-white hover:text-white transition-all px-5 py-2 bg-brand-blue hover:bg-blue-500 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:shadow-[0_0_30px_rgba(37,99,235,0.5)] active:scale-95">
+                                            <Save size={14} /> Guardar
+                                        </button>
+                                    )}
+                                    <button onClick={() => setDeleteConfirm({ id: 'all', type: 'session' })} className="flex items-center gap-2 text-gray-500 hover:text-red-400 transition-all px-4 py-2 bg-dark-input rounded-xl hover:bg-red-500/10 border border-dark-border hover:border-red-500/30 text-[10px] font-bold uppercase tracking-widest">
+                                        <Trash2 size={14} /> Vaciar Todo
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Dynamic List */}
-                            <div className="flex-1 overflow-y-auto min-h-0 p-4 md:p-6 space-y-4 pb-32 custom-scrollbar">
+                            <div className="flex-1 overflow-y-auto min-h-0 p-4 md:p-6 space-y-4 pb-8 custom-scrollbar">
                                 {groupedRecords.length === 0 ? (
                                     <div className="h-full flex flex-col items-center justify-center opacity-40">
                                         <Box size={48} className="text-gray-600 mb-4" />
@@ -1876,14 +1883,6 @@ export default function InventoryScannerApp() {
                                 )}
                             </div>
 
-                            {/* BOTÓN MÁGICO 'GUARDAR' */}
-                            {records.length > 0 && (
-                                <div className="absolute bottom-6 right-6 md:bottom-8 md:right-8 z-30 animate-in slide-in-from-bottom-4 zoom-in-95 duration-300">
-                                    <button onClick={saveCurrentSessionToHistory} className="bg-black hover:bg-white hover:text-black text-white px-8 py-5 rounded-3xl font-black uppercase tracking-[0.2em] text-xs flex items-center gap-3 shadow-[0_20px_40px_rgba(0,0,0,0.8)] border border-gray-800 transition-all active:scale-95 group">
-                                        <Save size={18} className="group-hover:text-black transition-colors" /> GUARDAR
-                                    </button>
-                                </div>
-                            )}
                         </div>
                     </>
                 )}
