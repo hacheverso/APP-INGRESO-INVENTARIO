@@ -1358,15 +1358,47 @@ export default function InventoryScannerApp() {
                                 <PackageCheck size={24} className="text-brand-blue" />
                                 <h2 className="text-2xl font-black tracking-widest uppercase">Catálogo de Productos Maestro</h2>
                             </div>
-                            <div className="flex-1 max-w-md relative">
-                                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                                <input
-                                    type="text"
-                                    value={productSearchTerm}
-                                    onChange={(e) => setProductSearchTerm(e.target.value)}
-                                    placeholder="Buscar por UPC o Nombre..."
-                                    className="w-full bg-dark-input border border-dark-border rounded-xl pl-12 pr-4 py-3 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-medium text-white placeholder-gray-600 shadow-inner"
-                                />
+                            <div className="flex items-center gap-3 flex-1 justify-end">
+                                <div className="flex-1 max-w-md relative">
+                                    <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                                    <input
+                                        type="text"
+                                        value={productSearchTerm}
+                                        onChange={(e) => setProductSearchTerm(e.target.value)}
+                                        placeholder="Buscar por UPC o Nombre..."
+                                        className="w-full bg-dark-input border border-dark-border rounded-xl pl-12 pr-4 py-3 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-medium text-white placeholder-gray-600 shadow-inner"
+                                    />
+                                </div>
+                                <button
+                                    onClick={async () => {
+                                        const totalProducts = Object.keys(productDB).length;
+                                        if (totalProducts === 0) {
+                                            showToast("El catálogo ya está vacío.", "info");
+                                            return;
+                                        }
+                                        if (!confirm(`⚠️ PELIGRO: ¿Estás seguro de eliminar los ${totalProducts} productos del catálogo?\n\nEsta acción eliminará TODOS los productos de la base de datos en la nube.\n\nNo se puede deshacer.`)) return;
+                                        if (!confirm(`ÚLTIMA CONFIRMACIÓN: Vas a borrar ${totalProducts} productos permanentemente. ¿Continuar?`)) return;
+
+                                        try {
+                                            const res = await fetch('/api/products?upc=ALL', { method: 'DELETE' });
+                                            const data = await res.json();
+                                            if (data.success) {
+                                                setProductDB({});
+                                                localStorage.removeItem('scanner_product_db');
+                                                showToast(`🗑 Catálogo vaciado: ${data.count} productos eliminados de la nube.`, 'success');
+                                            } else {
+                                                showToast("Error al vaciar: " + data.error, "error");
+                                            }
+                                        } catch (err) {
+                                            console.error("Error vaciando catálogo:", err);
+                                            showToast("Error de conexión al intentar vaciar el catálogo.", "error");
+                                        }
+                                    }}
+                                    className="flex items-center gap-2 px-5 py-3 bg-dark-input border border-dark-border hover:border-red-500/50 hover:bg-red-500/10 text-gray-500 hover:text-red-400 rounded-xl transition-all text-[10px] font-bold uppercase tracking-widest shrink-0"
+                                    title="Eliminar todos los productos del catálogo"
+                                >
+                                    <Eraser size={16} /> Vaciar Catálogo
+                                </button>
                             </div>
                         </div>
 

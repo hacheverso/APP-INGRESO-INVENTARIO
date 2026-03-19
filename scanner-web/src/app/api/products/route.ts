@@ -129,6 +129,12 @@ export async function DELETE(req: Request) {
             return NextResponse.json({ success: false, error: 'UPC is required for deletion' }, { status: 400 });
         }
 
+        // Bulk delete: ?upc=ALL
+        if (upc === 'ALL') {
+            const result = await prisma.product.deleteMany({});
+            return NextResponse.json({ success: true, message: `${result.count} productos eliminados del catálogo.`, count: result.count });
+        }
+
         await prisma.product.delete({
             where: { upc: upc }
         });
