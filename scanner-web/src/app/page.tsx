@@ -980,6 +980,29 @@ export default function InventoryScannerApp() {
                 localStorage.removeItem('scanner_backup'); // Limpiamos backup local
                 setView('HISTORY');
                 showToast(editingSessionId ? "Sesión actualizada en Neon DB" : "Sesión Guardada permanentemente en Neon DB", "success");
+
+                // Sync product LastCost to the cloud for future sessions
+                const costUpdates: { UPC: string; LastCost: number }[] = [];
+                const seenUpcs = new Set<string>();
+                for (const r of records) {
+                    if (!seenUpcs.has(r.UPC) && r.CostoUnitario > 0) {
+                        seenUpcs.add(r.UPC);
+                        costUpdates.push({ UPC: r.UPC, LastCost: r.CostoUnitario });
+                    }
+                }
+                if (costUpdates.length > 0) {
+                    // Fire-and-forget: update each product's lastCost
+                    for (const update of costUpdates) {
+                        const existingProd = productDB[update.UPC];
+                        if (existingProd) {
+                            fetch('/api/products', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ ...existingProd, LastCost: update.LastCost })
+                            }).catch(() => {});
+                        }
+                    }
+                }
             } else {
                 showToast("Error al guardar la sesión: " + data.error, "error");
             }
@@ -1743,44 +1766,57 @@ export default function InventoryScannerApp() {
                                                             <span className="text-[10px] uppercase font-bold tracking-widest text-gray-600 border border-gray-800 px-3 py-1.5 rounded">Costo Unit / {group.Records[0]?.Moneda || 'COP'}</span>
                                                         </div>
 
-                                                        {/* UI Inteligencia de Precios (Fase 14) */}
-                                                        <div className="flex items-center gap-3 pl-1">
-                                                            {/* Equivalencia Directa a COP Oculta si ya es COP */}
+                                                        {/* UI Inteligencia de Precios — Último Ingreso Histórico */}
+                                                        <div className="flex items-center gap-3 pl-1 flex-wrap">
+                                                            {/* Equivalencia Directa a COP */}
                                                             {(group.Records[0]?.Moneda === 'USD' && group.Records[0]?.CostoUnitario > 0) && (
                                                                 <span className="text-[10px] font-mono text-gray-500 font-medium">
                                                                     ≈ {formatMoney((group.Records[0].CostoUnitario * (parseFloat(exchangeRate) || 1)), 'COP')}
                                                                 </span>
                                                             )}
 
-                                                            {/* Fluctuación Histórica */}
+                                                            {/* Último Costo Histórico — Siempre visible */}
                                                             {(() => {
                                                                 const currentInputCost = Number(group.Records[0]?.CostoUnitario) || 0;
                                                                 const lastSavedCost = productDB[group.UPC]?.LastCost || 0;
 
-                                                                if (lastSavedCost === 0 || currentInputCost === 0) return null;
+                                                                // No hay historial: primer ingreso
+                                                                if (lastSavedCost === 0) {
+                                                                    return (
+                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-gray-500 bg-gray-900/50 px-3 py-1 rounded-lg border border-gray-800">
+                                                                            ✦ Primer ingreso
+                                                                        </span>
+                                                                    );
+                                                                }
+
+                                                                // Hay historial pero no se ha ingresado costo aún
+                                                                if (currentInputCost === 0) {
+                                                                    return (
+                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-amber-400 bg-amber-950/30 px-3 py-1 rounded-lg border border-amber-900/50">
+                                                                            Último: ${lastSavedCost}
+                                                                        </span>
+                                                                    );
+                                                                }
 
                                                                 const diff = currentInputCost - lastSavedCost;
                                                                 const pctChange = (diff / lastSavedCost) * 100;
 
                                                                 if (diff > 0) {
-                                                                    // Subió de precio (Alerta)
                                                                     return (
-                                                                        <span className="text-[9px] font-bold tracking-widest uppercase flex items-center gap-1 text-red-400 bg-red-950/30 px-2 py-0.5 rounded">
-                                                                            Último: ${lastSavedCost} <ArrowUpRight size={10} strokeWidth={3} /> {pctChange.toFixed(0)}%
+                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-red-400 bg-red-950/30 px-3 py-1 rounded-lg border border-red-900/50">
+                                                                            Último: ${lastSavedCost} <ArrowUpRight size={12} strokeWidth={3} /> +{pctChange.toFixed(0)}%
                                                                         </span>
                                                                     );
                                                                 } else if (diff < 0) {
-                                                                    // Bajó de precio (Ahorro)
                                                                     return (
-                                                                        <span className="text-[9px] font-bold tracking-widest uppercase flex items-center gap-1 text-emerald-400 bg-emerald-950/30 px-2 py-0.5 rounded">
-                                                                            Último: ${lastSavedCost} <ArrowDownRight size={10} strokeWidth={3} /> {Math.abs(pctChange).toFixed(0)}%
+                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-emerald-400 bg-emerald-950/30 px-3 py-1 rounded-lg border border-emerald-900/50">
+                                                                            Último: ${lastSavedCost} <ArrowDownRight size={12} strokeWidth={3} /> {pctChange.toFixed(0)}%
                                                                         </span>
                                                                     );
                                                                 } else {
-                                                                    // Sin cambio
                                                                     return (
-                                                                        <span className="text-[9px] font-bold tracking-widest uppercase flex items-center gap-1 text-gray-500 bg-gray-900 px-2 py-0.5 rounded">
-                                                                            Último: ${lastSavedCost} (-)
+                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-gray-400 bg-gray-900/50 px-3 py-1 rounded-lg border border-gray-800">
+                                                                            Último: ${lastSavedCost} — Igual
                                                                         </span>
                                                                     );
                                                                 }

@@ -27,7 +27,8 @@ export async function GET() {
                 UPC: p.upc,
                 SKU: p.sku,
                 NOMBRE: p.name,
-                IMAGEN: p.image || ""
+                IMAGEN: p.image || "",
+                LastCost: p.lastCost || 0
             };
         });
 
@@ -50,13 +51,15 @@ export async function POST(req: Request) {
                     update: {
                         sku: item.SKU || '',
                         name: item.NOMBRE,
-                        image: item.IMAGEN || null
+                        image: item.IMAGEN || null,
+                        ...(item.LastCost !== undefined && item.LastCost > 0 ? { lastCost: item.LastCost } : {})
                     },
                     create: {
                         upc: item.UPC,
                         sku: item.SKU || '',
                         name: item.NOMBRE,
-                        image: item.IMAGEN || null
+                        image: item.IMAGEN || null,
+                        lastCost: item.LastCost || 0
                     }
                 });
             });
@@ -78,13 +81,15 @@ export async function POST(req: Request) {
             update: {
                 sku: SKU || '',
                 name: NOMBRE,
-                image: IMAGEN || null
+                image: IMAGEN || null,
+                ...(body.LastCost !== undefined && body.LastCost > 0 ? { lastCost: body.LastCost } : {})
             },
             create: {
                 upc: UPC,
                 sku: SKU || '',
                 name: NOMBRE,
-                image: IMAGEN || null
+                image: IMAGEN || null,
+                lastCost: body.LastCost || 0
             }
         });
 
