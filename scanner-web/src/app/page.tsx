@@ -849,6 +849,72 @@ export default function InventoryScannerApp() {
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Ingresos");
 
+        // === HOJA 2: RESUMEN (agrupado por producto) ===
+        const summaryMap: Record<string, { SKU: string; NOMBRE: string; UNIDADES: number; COSTO: number; CAMBIO: number; }> = {};
+
+        recordsToExport.forEach(r => {
+            const key = r.UPC;
+            if (!summaryMap[key]) {
+                summaryMap[key] = {
+                    SKU: r.SKU || 'N/A',
+                    NOMBRE: r.Nombre || 'N/A',
+                    UNIDADES: 0,
+                    COSTO: r.CostoUnitario || 0,
+                    CAMBIO: r.TasaCambio || 0,
+                };
+            }
+            summaryMap[key].UNIDADES += r.Cantidad;
+            // Usar el costo más reciente (último escaneado)
+            if (r.CostoUnitario > 0) {
+                summaryMap[key].COSTO = r.CostoUnitario;
+                summaryMap[key].CAMBIO = r.TasaCambio;
+            }
+        });
+
+        // Fecha del lote (DD/MM/YYYY)
+        const now = new Date();
+        const summaryFecha = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+
+        const summaryData = Object.values(summaryMap)
+            .sort((a, b) => a.NOMBRE.localeCompare(b.NOMBRE))
+            .map(item => {
+                const totalUSD = item.CAMBIO > 0 ? (item.UNIDADES * item.COSTO) : (item.CAMBIO === 1 ? 0 : (item.UNIDADES * item.COSTO));
+                return {
+                    "FECHA": summaryFecha,
+                    "SKU": item.SKU,
+                    "NOMBRE": item.NOMBRE,
+                    "UNIDADES": item.UNIDADES,
+                    "COSTO": item.COSTO,
+                    "CAMBIO": item.CAMBIO,
+                    "USD": Math.round(item.UNIDADES * item.COSTO * 100) / 100,
+                };
+            });
+
+        // Fila de totales
+        const totalUnidades = summaryData.reduce((acc, r) => acc + r.UNIDADES, 0);
+        const totalUSD = summaryData.reduce((acc, r) => acc + r.USD, 0);
+        summaryData.push({
+            "FECHA": "",
+            "SKU": "",
+            "NOMBRE": "TOTAL",
+            "UNIDADES": totalUnidades,
+            "COSTO": 0,
+            "CAMBIO": 0,
+            "USD": Math.round(totalUSD * 100) / 100,
+        });
+
+        const summarySheet = XLSX.utils.json_to_sheet(summaryData);
+        summarySheet['!cols'] = [
+            { wch: 15 },  // FECHA
+            { wch: 20 },  // SKU
+            { wch: 45 },  // NOMBRE
+            { wch: 12 },  // UNIDADES
+            { wch: 12 },  // COSTO
+            { wch: 10 },  // CAMBIO
+            { wch: 15 },  // USD
+        ];
+        XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen");
+
         const safeLoteName = loteName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
         const fileName = `ingreso_${safeLoteName}_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.xlsx`;
         XLSX.writeFile(workbook, fileName);
