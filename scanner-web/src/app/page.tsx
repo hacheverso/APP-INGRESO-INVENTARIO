@@ -786,8 +786,11 @@ export default function InventoryScannerApp() {
             showToast("Registro eliminado", 'success');
             upcRef.current?.focus();
         } else if (deleteConfirm.type === 'session') {
+            setRecords([]);
             clearFields();
-            showToast("Sesión vaciada", 'success');
+            localStorage.removeItem('scanner_backup');
+            showToast("Sesión vaciada — todos los productos eliminados", 'success');
+            upcRef.current?.focus();
         }
         setDeleteConfirm({ id: null, type: 'record' });
     };
@@ -1582,8 +1585,8 @@ export default function InventoryScannerApp() {
                                 <h2 className="text-white font-black tracking-[0.2em] text-sm flex items-center gap-3">
                                     <History size={18} className="text-gray-500" /> HISTORIAL RECIENTE
                                 </h2>
-                                <button onClick={() => setDeleteConfirm({ id: 'all', type: 'session' })} className="text-gray-600 hover:text-red-500 transition-colors p-2 bg-dark-input rounded-xl hover:bg-red-500/10">
-                                    <Trash2 size={16} />
+                                <button onClick={() => setDeleteConfirm({ id: 'all', type: 'session' })} className="flex items-center gap-2 text-gray-500 hover:text-red-400 transition-all px-4 py-2 bg-dark-input rounded-xl hover:bg-red-500/10 border border-dark-border hover:border-red-500/30 text-[10px] font-bold uppercase tracking-widest">
+                                    <Trash2 size={14} /> Vaciar Todo
                                 </button>
                             </div>
 
