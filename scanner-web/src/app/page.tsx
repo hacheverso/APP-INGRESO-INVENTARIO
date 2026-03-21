@@ -655,7 +655,10 @@ export default function InventoryScannerApp() {
                 serialRef.current?.focus();
                 return;
             }
-            if (!/^[A-Za-z]/.test(serialVal)) {
+            const serialExceptions = ['XBOX', 'META QUEST'];
+            const productName = (matchedProduct?.NOMBRE || '').toUpperCase();
+            const isException = serialExceptions.some(ex => productName.includes(ex));
+            if (!isException && !/^[A-Za-z]/.test(serialVal)) {
                 showToast(`Error: El serial debe comenzar con una letra: ${serialVal}`, 'error');
                 triggerFeedback('error');
                 serialRef.current?.focus();
