@@ -655,6 +655,13 @@ export default function InventoryScannerApp() {
                 serialRef.current?.focus();
                 return;
             }
+            if (!/^[A-Za-z]/.test(serialVal)) {
+                showToast(`Error: El serial debe comenzar con una letra: ${serialVal}`, 'error');
+                triggerFeedback('error');
+                serialRef.current?.focus();
+                serialRef.current?.select();
+                return;
+            }
             if (records.some(r => r.Serial === serialVal)) {
                 showToast(`Error: El serial ya fue ingresado: ${serialVal}`, 'error');
                 triggerFeedback('error');
