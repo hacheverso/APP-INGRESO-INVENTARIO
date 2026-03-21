@@ -265,9 +265,44 @@ export default function InventoryScannerApp() {
         }, 4000);
     };
 
+    const playBeep = (type: 'success' | 'error') => {
+        try {
+            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            if (type === 'success') {
+                // Pleasant ascending double-tone
+                const osc1 = ctx.createOscillator();
+                const gain1 = ctx.createGain();
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(880, ctx.currentTime);
+                osc1.frequency.setValueAtTime(1174.66, ctx.currentTime + 0.08);
+                gain1.gain.setValueAtTime(0.3, ctx.currentTime);
+                gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+                osc1.connect(gain1).connect(ctx.destination);
+                osc1.start(ctx.currentTime);
+                osc1.stop(ctx.currentTime + 0.2);
+            } else {
+                // Harsh low double-beep for error
+                [0, 0.18].forEach(offset => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(280, ctx.currentTime + offset);
+                    gain.gain.setValueAtTime(0.35, ctx.currentTime + offset);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + offset + 0.12);
+                    osc.connect(gain).connect(ctx.destination);
+                    osc.start(ctx.currentTime + offset);
+                    osc.stop(ctx.currentTime + offset + 0.12);
+                });
+            }
+        } catch (e) {
+            // Web Audio API not available, silently fail
+        }
+    };
+
     const triggerFeedback = (status: 'success' | 'error') => {
         setScanStatus(status);
         setIsFlashing(true);
+        if (isAudioEnabled) playBeep(status);
         setTimeout(() => {
             setIsFlashing(false);
             setScanStatus('idle');
@@ -623,11 +658,6 @@ export default function InventoryScannerApp() {
             if (records.some(r => r.Serial === serialVal)) {
                 showToast(`Error: El serial ya fue ingresado: ${serialVal}`, 'error');
                 triggerFeedback('error');
-                // Optional: play an error sound via JS audio if requested
-                const audio = new Audio('data:audio/mp3;base64,//OwgxAAAAAAAAAAAAAABJbmZvAAAADwAAAAEAAABaABgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBg');
-                audio.volume = 0.5;
-                audio.play().catch(() => { });
-
                 serialRef.current?.focus();
                 serialRef.current?.select();
                 return;
@@ -1863,16 +1893,22 @@ export default function InventoryScannerApp() {
                                                 </div>
                                             </div>
 
-                                            <div className="flex flex-wrap gap-2 pl-2 mt-2">
+                                            <div className="flex flex-wrap gap-2 pl-2 mt-2 items-end">
                                                 {group.Records.map((r, itemIndex) => {
                                                     const isMostRecentScanned = groupIndex === 0 && itemIndex === group.Records.length - 1;
                                                     return (
-                                                        <div key={r.ID} className={`group/tag flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all duration-300 max-w-full ${isMostRecentScanned ? 'bg-brand-blue text-white shadow-[0_0_20px_rgba(37,99,235,0.4)] border-transparent scale-[1.02]' : 'bg-[#0A0A0B] border-dark-border text-gray-400 hover:border-gray-700 hover:text-gray-200'}`}>
-                                                            <span className="font-mono text-xs font-bold tracking-widest uppercase break-all truncate">
+                                                        <div key={r.ID} className={`group/tag flex items-center rounded-xl border transition-all duration-300 max-w-full ${
+                                                            isMostRecentScanned
+                                                                ? 'bg-brand-blue text-white shadow-[0_0_30px_rgba(37,99,235,0.5)] border-transparent scale-[1.05] animate-pulse gap-4 px-6 py-4'
+                                                                : 'bg-[#0A0A0B] border-dark-border text-gray-400 hover:border-gray-700 hover:text-gray-200 gap-3 px-4 py-2.5'
+                                                        }`}>
+                                                            <span className={`font-mono font-black tracking-widest uppercase break-all truncate ${
+                                                                isMostRecentScanned ? 'text-xl md:text-2xl' : 'text-xs'
+                                                            }`}>
                                                                 {r.Tipo === 'SERIAL' ? r.Serial : `MASIVO x${r.Cantidad}`}
                                                             </span>
                                                             <button onClick={(e) => handleDeleteRecord(r.ID, e)} className={`flex-shrink-0 transition-opacity ${isMostRecentScanned ? 'opacity-100 text-white/70 hover:text-white' : 'opacity-0 group-hover/tag:opacity-100 hover:text-red-400'}`}>
-                                                                <X size={14} strokeWidth={3} />
+                                                                <X size={isMostRecentScanned ? 18 : 14} strokeWidth={3} />
                                                             </button>
                                                         </div>
                                                     );
