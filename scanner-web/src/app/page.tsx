@@ -1387,9 +1387,19 @@ export default function InventoryScannerApp() {
 
                     {/* Controles de Audio */}
                     <div className="flex items-center gap-2">
-                        <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 1.5 : prev === 1.5 ? 2.0 : 1.0)} className={`w-[36px] h-[36px] border rounded-xl transition-colors bg-[#151E32] border-brand-blue/30 text-brand-blue hover:bg-brand-blue/20 flex items-center justify-center font-bold text-xs`} title="Velocidad de Voz">
-                            {speechRate}x
-                        </button>
+                        <div className="flex items-center gap-2 bg-dark-input border border-dark-border rounded-xl px-3 py-1.5">
+                            <span className="text-[10px] font-bold text-brand-blue uppercase tracking-widest w-[28px] text-center">{speechRate.toFixed(1)}x</span>
+                            <input
+                                type="range"
+                                min="0.5"
+                                max="2.0"
+                                step="0.1"
+                                value={speechRate}
+                                onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+                                className="w-[80px] h-1.5 accent-blue-500 cursor-pointer"
+                                title="Velocidad de Voz"
+                            />
+                        </div>
                         <button onClick={() => setIsAudioEnabled(!isAudioEnabled)} className={`w-[36px] h-[36px] border rounded-xl transition-colors flex items-center justify-center ${isAudioEnabled ? 'bg-[#151E32] border-brand-blue/30 text-brand-blue hover:bg-brand-blue/20' : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-400'}`} title={isAudioEnabled ? "Silenciar Asistente" : "Activar Asistente"}>
                             {isAudioEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
                         </button>
