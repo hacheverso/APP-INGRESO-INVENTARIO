@@ -1827,10 +1827,19 @@ export default function InventoryScannerApp() {
                                                                 <input
                                                                     type="number"
                                                                     placeholder="0"
+                                                                    data-cost-index={groupIndex}
                                                                     className="bg-transparent text-emerald-500 font-mono font-black outline-none w-[120px] text-base md:text-lg [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                                     value={group.Records[0]?.CostoUnitario === 0 && !group.Records[0].CostoTotalCOP ? "" : group.Records[0]?.CostoUnitario}
                                                                     onChange={(e) => handleUpdateUpcCost(group.UPC, e.target.value)}
                                                                     onWheel={(e) => e.currentTarget.blur()}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter') {
+                                                                            e.preventDefault();
+                                                                            const next = document.querySelector(`[data-cost-index="${groupIndex + 1}"]`) as HTMLInputElement;
+                                                                            if (next) next.focus();
+                                                                            else (e.target as HTMLInputElement).blur();
+                                                                        }
+                                                                    }}
                                                                 />
                                                             </div>
                                                             <span className="text-[10px] uppercase font-bold tracking-widest text-gray-600 border border-gray-800 px-3 py-1.5 rounded">Costo Unit / {group.Records[0]?.Moneda || 'COP'}</span>
