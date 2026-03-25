@@ -1606,7 +1606,7 @@ export default function InventoryScannerApp() {
                                                 <tr key={prod.UPC} className="hover:bg-white/5 transition-colors group">
                                                     <td className="px-6 py-3">
                                                         <div className="w-12 h-12 bg-white rounded flex items-center justify-center border border-gray-700 overflow-hidden mx-auto">
-                                                            {prod.IMAGEN && prod.IMAGEN.startsWith('http') ? (
+                                                            {prod.IMAGEN && (prod.IMAGEN.startsWith('http') || prod.IMAGEN.startsWith('data:')) ? (
                                                                 <img src={prod.IMAGEN} alt={prod.NOMBRE} className="max-w-full max-h-full object-contain" />
                                                             ) : (
                                                                 <ImageIcon size={16} className="text-gray-400" />
@@ -1715,7 +1715,7 @@ export default function InventoryScannerApp() {
                                 {matchedProduct ? (
                                     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-6 z-30 bg-dark-input rounded-3xl overflow-y-auto custom-scrollbar">
                                         <div className="flex flex-col items-center gap-4 text-center mt-auto mb-auto animate-in slide-in-from-bottom-4 duration-300 w-full">
-                                            {matchedProduct.IMAGEN && matchedProduct.IMAGEN.startsWith('http') && (
+                                            {matchedProduct.IMAGEN && (matchedProduct.IMAGEN.startsWith('http') || matchedProduct.IMAGEN.startsWith('data:')) && (
                                                 <div className="w-[140px] h-[140px] rounded-2xl overflow-hidden bg-white/5 border border-white/10 shadow-2xl p-4 flex items-center justify-center shrink-0">
                                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                                     <img src={matchedProduct.IMAGEN} alt={matchedProduct.NOMBRE} className="max-w-full max-h-full object-contain" />
