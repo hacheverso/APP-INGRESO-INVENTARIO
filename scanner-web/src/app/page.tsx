@@ -655,11 +655,20 @@ export default function InventoryScannerApp() {
                 serialRef.current?.focus();
                 return;
             }
+            // Protección: Detectar si escanearon el UPC en el campo de serial por error
+            if (serialVal === upcVal) {
+                showToast(`⚠️ Error: Escaneaste el UPC de nuevo en vez del serial. Escanea el serial del producto.`, 'error');
+                triggerFeedback('error');
+                setSerial("");
+                serialRef.current?.focus();
+                return;
+            }
             const serialExceptions = ['XBOX', 'META QUEST'];
             const productName = (matchedProduct?.NOMBRE || '').toUpperCase();
             const isException = serialExceptions.some(ex => productName.includes(ex));
-            if (!isException && !/^[A-Za-z]/.test(serialVal)) {
-                showToast(`Error: El serial debe comenzar con una letra: ${serialVal}`, 'error');
+            const isIMEI = /^\d{15}$/.test(serialVal);
+            if (!isException && !isIMEI && !/^[A-Za-z]/.test(serialVal)) {
+                showToast(`Error: El serial debe comenzar con una letra (o ser un IMEI de 15 dígitos): ${serialVal}`, 'error');
                 triggerFeedback('error');
                 serialRef.current?.focus();
                 serialRef.current?.select();
