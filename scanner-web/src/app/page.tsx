@@ -767,27 +767,27 @@ export default function InventoryScannerApp() {
             };
             setRecords(prev => [newRecord, ...prev]);
         } else {
-            // Generación de Seriales Masivos: DDMMYYYY000X
-            const dd = String(now.getDate()).padStart(2, '0');
+            // Generación de Códigos Masivos: MYYMMDD-NNN (ej: M260330-001)
+            const yy = String(now.getFullYear()).slice(-2);
             const mm = String(now.getMonth() + 1).padStart(2, '0');
-            const yyyy = now.getFullYear();
-            const datePrefix = `${dd}${mm}${yyyy}`;
+            const dd = String(now.getDate()).padStart(2, '0');
+            const datePrefix = `M${yy}${mm}${dd}-`;
             
             setRecords(prev => {
                 const newRecordsArr: InventoryRecord[] = [];
                 let currentCounter = 1;
 
-                // Encontrar el contador más alto existente para este prefijo de fecha en los registros actuales
-                const existingSerials = prev.map(r => r.Serial).filter(s => s && s.startsWith(datePrefix));
-                if (existingSerials.length > 0) {
-                    const counters = existingSerials.map(s => parseInt(s.substring(8), 10)).filter(n => !isNaN(n));
+                // Encontrar el contador más alto existente para este prefijo de fecha
+                const existingCodes = prev.map(r => r.Serial).filter(s => s && s.startsWith(datePrefix));
+                if (existingCodes.length > 0) {
+                    const counters = existingCodes.map(s => parseInt(s.split('-')[1], 10)).filter(n => !isNaN(n));
                     if (counters.length > 0) {
                         currentCounter = Math.max(...counters) + 1;
                     }
                 }
 
                 for (let i = 0; i < parsedQty; i++) {
-                    const massiveSerial = `${datePrefix}${String(currentCounter).padStart(4, '0')}`;
+                    const masivoCode = `${datePrefix}${String(currentCounter).padStart(3, '0')}`;
                     currentCounter++;
 
                     newRecordsArr.push({
@@ -798,8 +798,8 @@ export default function InventoryScannerApp() {
                         UPC: upcVal,
                         Nombre: matchedProduct?.NOMBRE || 'N/A',
                         SKU: matchedProduct?.SKU || 'N/A',
-                        Serial: massiveSerial,
-                        Cantidad: 1, // Ahora se guardan unitariamente con serial propio
+                        Serial: masivoCode,
+                        Cantidad: 1,
                         Nota: note.trim(),
                         ID: uuidv4().substring(0, 8),
                         Moneda: currency,
@@ -864,6 +864,8 @@ export default function InventoryScannerApp() {
 
         if (field === 'upc') {
             if (productDB[val]) return { valid: true, message: '' };
+            // Short codes (≤6 chars) are always valid in UPC — Family IDs, model codes, etc. (e.g. Z1KH)
+            if (val.length <= 6) return { valid: true, message: '' };
             if (isLikelySerial(val) && !isLikelyUPC(val)) {
                 return { 
                     valid: false, 
@@ -980,7 +982,7 @@ export default function InventoryScannerApp() {
 
             return {
                 "FECHA": fechaFormatted,
-                "SERIALES": r.Serial || (r.Tipo === 'MASIVO' ? `MASIVO x${r.Cantidad}` : ''),
+                "SERIALES": r.Serial || '',
                 "UPC": r.UPC,
                 "SKU": r.SKU,
                 "NOMBRE": r.Nombre,
@@ -2101,7 +2103,7 @@ export default function InventoryScannerApp() {
                                                             <span className={`font-mono font-black tracking-widest uppercase break-all truncate ${
                                                                 isMostRecentScanned ? 'text-xl md:text-2xl' : 'text-xs'
                                                             }`}>
-                                                                {r.Tipo === 'SERIAL' ? r.Serial : `MASIVO x${r.Cantidad}`}
+                                                                {r.Serial || `MASIVO x${r.Cantidad}`}
                                                             </span>
                                                             <button onClick={(e) => handleDeleteRecord(r.ID, e)} className={`flex-shrink-0 transition-opacity ${isMostRecentScanned ? 'opacity-100 text-white/70 hover:text-white' : 'opacity-0 group-hover/tag:opacity-100 hover:text-red-400'}`}>
                                                                 <X size={isMostRecentScanned ? 18 : 14} strokeWidth={3} />
