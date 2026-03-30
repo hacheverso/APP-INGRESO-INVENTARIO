@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning, Search, LogOut } from 'lucide-react';
+import { Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning, Search, LogOut, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { v4 as uuidv4 } from 'uuid';
@@ -28,6 +28,15 @@ interface Product {
     SKU: string;
     IMAGEN: string;
     LastCost?: number; // Historial del último costo registrado para calcular fluctuación
+    // Extended fields from Google Sheets (live data)
+    STOCK?: number;
+    PRECIO?: number;
+    COSTO?: number;
+    MARGEN?: string;
+    CATEGORIA?: string;
+    COSTO_TOTAL?: number;
+    DIAS_SIN_VENDER?: number;
+    _source?: 'sheets';
 }
 
 interface InventoryRecord {
@@ -87,6 +96,12 @@ export default function InventoryScannerApp() {
     const [showNewProductModal, setShowNewProductModal] = useState(false);
     const [newProductForm, setNewProductForm] = useState({ UPC: '', NOMBRE: '', SKU: '', IMAGEN: '' });
     const [productSearchTerm, setProductSearchTerm] = useState("");
+
+    // Google Sheets Connection State
+    const [sheetsConnected, setSheetsConnected] = useState(false);
+    const [sheetsProductCount, setSheetsProductCount] = useState(0);
+    const [sheetsLastSync, setSheetsLastSync] = useState<string | null>(null);
+    const [sheetsSyncing, setSheetsSyncing] = useState(false);
 
     // Flash Feedback System (Phase 10)
     const [scanStatus, setScanStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -167,6 +182,12 @@ export default function InventoryScannerApp() {
                 const prodData = await prodRes.json();
                 if (prodData.success && prodData.data) {
                     setProductDB(prodData.data);
+                    setSheetsConnected(prodData.sheetsConnected === true);
+                    if (prodData.sheetsConnected) {
+                        const sheetCount = Object.values(prodData.data).filter((p: any) => p._source === 'sheets').length;
+                        setSheetsProductCount(sheetCount || Object.keys(prodData.data).length);
+                        setSheetsLastSync(prodData.lastSheetsUpdate || new Date().toISOString());
+                    }
                 }
 
                 // Sessions
@@ -1375,6 +1396,48 @@ export default function InventoryScannerApp() {
 
                     {/* Herramientas Secundarias (Iconos y Botón Principal Historial) */}
                     <div className="flex items-center gap-2">
+                        {/* Google Sheets Connection Indicator */}
+                        <button 
+                            onClick={async () => {
+                                setSheetsSyncing(true);
+                                try {
+                                    const res = await fetch('/api/products');
+                                    const data = await res.json();
+                                    if (data.success && data.data) {
+                                        setProductDB(data.data);
+                                        setSheetsConnected(data.sheetsConnected === true);
+                                        if (data.sheetsConnected) {
+                                            const sheetCount = Object.values(data.data).filter((p: any) => p._source === 'sheets').length;
+                                            setSheetsProductCount(sheetCount || Object.keys(data.data).length);
+                                            setSheetsLastSync(data.lastSheetsUpdate || new Date().toISOString());
+                                        }
+                                        showToast(`📊 Catálogo sincronizado: ${Object.keys(data.data).length} productos`, 'success');
+                                    }
+                                } catch (err) {
+                                    showToast('Error sincronizando con Google Sheets', 'error');
+                                    setSheetsConnected(false);
+                                } finally {
+                                    setSheetsSyncing(false);
+                                }
+                            }}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-xs font-bold ${
+                                sheetsConnected 
+                                    ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/40' 
+                                    : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-300'
+                            }`}
+                            title={sheetsConnected 
+                                ? `Google Sheets conectado — ${sheetsProductCount} productos | Última sync: ${sheetsLastSync ? new Date(sheetsLastSync).toLocaleTimeString('es-CO') : 'N/A'}` 
+                                : 'Google Sheets no conectado — Click para sincronizar'
+                            }
+                        >
+                            <div className="relative">
+                                <RefreshCw size={14} className={sheetsSyncing ? 'animate-spin' : ''} />
+                                <div className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ${sheetsConnected ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+                            </div>
+                            <span className="hidden md:inline">
+                                {sheetsSyncing ? 'Sincronizando...' : sheetsConnected ? `${sheetsProductCount}` : 'Sync'}
+                            </span>
+                        </button>
                         <button onClick={migrateLocalToCloud} className="p-2.5 bg-dark-input hover:bg-emerald-900/40 text-emerald-500 rounded-xl border border-dark-border hover:border-emerald-500/50 transition-all font-bold group" title="FORZAR: Migrar Backup Local a la Nube">
                             <CloudLightning size={16} className="group-hover:animate-pulse" />
                         </button>
@@ -1598,12 +1661,13 @@ export default function InventoryScannerApp() {
                                         <tbody className="divide-y divide-dark-border text-gray-300">
                                             {Object.values(productDB)
                                                 .filter(p => {
+                                                    if (!p.UPC) return false; // Skip products without barcode
                                                     if (!productSearchTerm) return true;
                                                     const term = productSearchTerm.toLowerCase();
                                                     return p.NOMBRE.toLowerCase().includes(term) || p.UPC.includes(term);
                                                 })
-                                                .map((prod) => (
-                                                <tr key={prod.UPC} className="hover:bg-white/5 transition-colors group">
+                                                .map((prod, idx) => (
+                                                <tr key={prod.UPC || `product-${idx}`} className="hover:bg-white/5 transition-colors group">
                                                     <td className="px-6 py-3">
                                                         <div className="w-12 h-12 bg-white rounded flex items-center justify-center border border-gray-700 overflow-hidden mx-auto">
                                                             {prod.IMAGEN && (prod.IMAGEN.startsWith('http') || prod.IMAGEN.startsWith('data:')) ? (
@@ -1723,9 +1787,14 @@ export default function InventoryScannerApp() {
                                             )}
                                             <h2 className="text-2xl md:text-3xl font-black text-white leading-tight uppercase drop-shadow-xl">{matchedProduct.NOMBRE}</h2>
                                             <span className="text-brand-blue font-mono text-lg md:text-xl tracking-widest">{matchedProduct.UPC}</span>
+                                            {matchedProduct.SKU && (
+                                                <span className="text-gray-500 font-mono text-xs tracking-wider">SKU: {matchedProduct.SKU}</span>
+                                            )}
                                         </div>
                                     </div>
                                 ) : null}
+
+
 
                                 {/* Input Real y Visible */}
                                 <div className="w-full flex items-center justify-center z-20">

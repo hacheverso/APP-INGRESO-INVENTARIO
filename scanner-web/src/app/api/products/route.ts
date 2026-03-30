@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSession } from '@/lib/auth';
+import { fetchSheetsProducts } from '@/lib/sheets';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,12 +21,16 @@ export async function GET() {
         const session = await getSession();
         if (!session) return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
 
-        const products = await prisma.product.findMany({
-            where: { userId: session.userId }
-        });
+        // Fetch DB products and Google Sheets products in parallel
+        const [dbProducts, sheetsResult] = await Promise.all([
+            prisma.product.findMany({ where: { userId: session.userId } }),
+            fetchSheetsProducts()
+        ]);
 
         const productDB: Record<string, any> = {};
-        products.forEach(p => {
+
+        // 1. First, load DB products as base
+        dbProducts.forEach(p => {
             productDB[p.upc] = {
                 UPC: p.upc,
                 SKU: p.sku,
@@ -35,7 +40,40 @@ export async function GET() {
             };
         });
 
-        return NextResponse.json({ success: true, data: productDB });
+        // 2. Merge/override with Google Sheets data (live source of truth)
+        if (sheetsResult.success && sheetsResult.data) {
+            const sheetsData = sheetsResult.data as Record<string, any>;
+            for (const [key, sheetProduct] of Object.entries(sheetsData)) {
+                if (productDB[key]) {
+                    // Merge: Sheets data enriches/overrides DB data
+                    productDB[key] = {
+                        ...productDB[key],
+                        NOMBRE: sheetProduct.NOMBRE || productDB[key].NOMBRE,
+                        SKU: sheetProduct.SKU || productDB[key].SKU,
+                        IMAGEN: sheetProduct.IMAGEN || productDB[key].IMAGEN,
+                        LastCost: sheetProduct.LastCost || productDB[key].LastCost,
+                        // Extended fields from Sheets
+                        STOCK: sheetProduct.STOCK,
+                        PRECIO: sheetProduct.PRECIO,
+                        COSTO: sheetProduct.COSTO,
+                        MARGEN: sheetProduct.MARGEN,
+                        CATEGORIA: sheetProduct.CATEGORIA,
+                        COSTO_TOTAL: sheetProduct.COSTO_TOTAL,
+                        DIAS_SIN_VENDER: sheetProduct.DIAS_SIN_VENDER,
+                    };
+                } else {
+                    // New product only in Sheets — add it
+                    productDB[key] = sheetProduct;
+                }
+            }
+        }
+
+        return NextResponse.json({
+            success: true,
+            data: productDB,
+            sheetsConnected: sheetsResult.success === true,
+            lastSheetsUpdate: sheetsResult.lastFetched || null
+        });
     } catch (error: any) {
         console.error("Error fetching products:", error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
