@@ -2081,7 +2081,7 @@ export default function InventoryScannerApp() {
                                                             <span className="text-[10px] uppercase font-bold tracking-widest text-gray-600 border border-gray-800 px-3 py-1.5 rounded">Costo Unit / {group.Records[0]?.Moneda || 'COP'}</span>
                                                         </div>
 
-                                                        {/* UI Inteligencia de Precios — Último Ingreso Histórico */}
+                                                            {/* UI Inteligencia de Precios — Último Ingreso Histórico */}
                                                         <div className="flex items-center gap-3 pl-1 flex-wrap">
                                                             {/* Equivalencia Directa a COP */}
                                                             {(group.Records[0]?.Moneda === 'USD' && group.Records[0]?.CostoUnitario > 0) && (
@@ -2090,7 +2090,7 @@ export default function InventoryScannerApp() {
                                                                 </span>
                                                             )}
 
-                                                            {/* Último Costo Histórico — Siempre visible */}
+                                                            {/* Último Costo Histórico en USD — Siempre visible */}
                                                             {(() => {
                                                                 const currentInputCost = Number(group.Records[0]?.CostoUnitario) || 0;
                                                                 const lastSavedCost = productDB[group.UPC]?.LastCost || 0;
@@ -2108,7 +2108,7 @@ export default function InventoryScannerApp() {
                                                                 if (currentInputCost === 0) {
                                                                     return (
                                                                         <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-amber-400 bg-amber-950/30 px-3 py-1 rounded-lg border border-amber-900/50">
-                                                                            Último: ${lastSavedCost}
+                                                                            Último: USD ${lastSavedCost}
                                                                         </span>
                                                                     );
                                                                 }
@@ -2119,19 +2119,19 @@ export default function InventoryScannerApp() {
                                                                 if (diff > 0) {
                                                                     return (
                                                                         <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-red-400 bg-red-950/30 px-3 py-1 rounded-lg border border-red-900/50">
-                                                                            Último: ${lastSavedCost} <ArrowUpRight size={12} strokeWidth={3} /> +{pctChange.toFixed(0)}%
+                                                                            Último: USD ${lastSavedCost} <ArrowUpRight size={12} strokeWidth={3} /> +{pctChange.toFixed(0)}%
                                                                         </span>
                                                                     );
                                                                 } else if (diff < 0) {
                                                                     return (
                                                                         <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-emerald-400 bg-emerald-950/30 px-3 py-1 rounded-lg border border-emerald-900/50">
-                                                                            Último: ${lastSavedCost} <ArrowDownRight size={12} strokeWidth={3} /> {pctChange.toFixed(0)}%
+                                                                            Último: USD ${lastSavedCost} <ArrowDownRight size={12} strokeWidth={3} /> {pctChange.toFixed(0)}%
                                                                         </span>
                                                                     );
                                                                 } else {
                                                                     return (
                                                                         <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-gray-400 bg-gray-900/50 px-3 py-1 rounded-lg border border-gray-800">
-                                                                            Último: ${lastSavedCost} — Igual
+                                                                            Último: USD ${lastSavedCost} — Igual
                                                                         </span>
                                                                     );
                                                                 }

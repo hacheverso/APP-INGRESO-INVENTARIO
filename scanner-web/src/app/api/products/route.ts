@@ -51,7 +51,7 @@ export async function GET() {
                         NOMBRE: sheetProduct.NOMBRE || productDB[key].NOMBRE,
                         SKU: sheetProduct.SKU || productDB[key].SKU,
                         IMAGEN: sheetProduct.IMAGEN || productDB[key].IMAGEN,
-                        LastCost: sheetProduct.LastCost || productDB[key].LastCost,
+                        LastCost: productDB[key].LastCost || 0, // DB is source of truth for LastCost (USD)
                         // Extended fields from Sheets
                         STOCK: sheetProduct.STOCK,
                         PRECIO: sheetProduct.PRECIO,

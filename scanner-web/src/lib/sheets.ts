@@ -149,7 +149,7 @@ export async function fetchSheetsProducts(): Promise<SheetsResult> {
                 SKU: sku,
                 NOMBRE: nombre,
                 IMAGEN: cleanImagen,
-                LastCost: costo,
+                LastCost: 0, // LastCost only comes from user-entered USD values (DB), not from Sheets COP data
                 STOCK: stock,
                 PRECIO: precio,
                 COSTO: costo,
