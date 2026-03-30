@@ -184,8 +184,7 @@ export default function InventoryScannerApp() {
                     setProductDB(prodData.data);
                     setSheetsConnected(prodData.sheetsConnected === true);
                     if (prodData.sheetsConnected) {
-                        const sheetCount = Object.values(prodData.data).filter((p: any) => p._source === 'sheets').length;
-                        setSheetsProductCount(sheetCount || Object.keys(prodData.data).length);
+                        setSheetsProductCount(Object.keys(prodData.data).length);
                         setSheetsLastSync(prodData.lastSheetsUpdate || new Date().toISOString());
                     }
                 }
@@ -1407,8 +1406,7 @@ export default function InventoryScannerApp() {
                                         setProductDB(data.data);
                                         setSheetsConnected(data.sheetsConnected === true);
                                         if (data.sheetsConnected) {
-                                            const sheetCount = Object.values(data.data).filter((p: any) => p._source === 'sheets').length;
-                                            setSheetsProductCount(sheetCount || Object.keys(data.data).length);
+                                            setSheetsProductCount(Object.keys(data.data).length);
                                             setSheetsLastSync(data.lastSheetsUpdate || new Date().toISOString());
                                         }
                                         showToast(`📊 Catálogo sincronizado: ${Object.keys(data.data).length} productos`, 'success');
