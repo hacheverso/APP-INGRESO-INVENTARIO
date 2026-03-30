@@ -818,6 +818,55 @@ export default function InventoryScannerApp() {
         clearFields();
     };
 
+    // ====== SMART SCAN FILTER ======
+    // Prevents the TERA scanner from accidentally reading nearby barcodes into the wrong field.
+    // UPC field: Only accepts numeric codes 8-13 digits (UPC-A=12, EAN-13=13, UPC-E=8)
+    // Serial field: Only accepts serials (starts with letter) or IMEI (15 digits). Rejects UPC-like codes.
+
+    const isLikelyUPC = (val: string): boolean => {
+        // UPCs are purely numeric, 8-13 digits
+        return /^\d{8,13}$/.test(val);
+    };
+
+    const isLikelySerial = (val: string): boolean => {
+        // Serials start with a letter OR are exactly 15-digit IMEI
+        const isIMEI = /^\d{15}$/.test(val);
+        const startsWithLetter = /^[A-Za-z]/.test(val);
+        return startsWithLetter || isIMEI;
+    };
+
+    const validateSmartScan = (field: string, value: string): { valid: boolean; message: string } => {
+        const val = value.trim();
+        if (!val) return { valid: true, message: '' }; // Empty is handled elsewhere
+
+        if (field === 'upc') {
+            // UPC field: Must look like a barcode (numeric, 8-13 digits)
+            // Also accept if it's a known product in the DB (edge case: custom barcodes)
+            if (productDB[val]) return { valid: true, message: '' };
+            if (isLikelySerial(val) && !isLikelyUPC(val)) {
+                return { 
+                    valid: false, 
+                    message: `⚠️ Eso parece un SERIAL, no un UPC. Escanea el código de barras del producto.`
+                };
+            }
+            // Accept anything numeric or known — allow broad match for UPC field
+            return { valid: true, message: '' };
+        }
+
+        if (field === 'serial') {
+            // Serial field: Reject if it looks like a UPC barcode
+            if (isLikelyUPC(val) && !(/^\d{15}$/.test(val))) {
+                return {
+                    valid: false,
+                    message: `⚠️ Eso parece un UPC (${val.length} dígitos), no un serial. Escanea el serial/IMEI del producto.`
+                };
+            }
+            return { valid: true, message: '' };
+        }
+
+        return { valid: true, message: '' };
+    };
+
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, field: string) => {
         if (e.key === 'Escape') {
             e.preventDefault();
@@ -830,9 +879,31 @@ export default function InventoryScannerApp() {
 
         if (e.key === 'Enter') {
             e.preventDefault();
-            if (field === 'upc') processUpcScan();
+
+            // Smart Scan Filter: Validate before processing
+            if (field === 'upc') {
+                const validation = validateSmartScan('upc', upc);
+                if (!validation.valid) {
+                    showToast(validation.message, 'error');
+                    triggerFeedback('error');
+                    setUpc("");
+                    upcRef.current?.focus();
+                    return;
+                }
+                processUpcScan();
+            }
             // Automatización Fase 8: Si escanea el serial, guarda inmediatamente y vuelve al UPC sin preguntar.
-            else if (field === 'serial' && serial.trim()) addRecord();
+            else if (field === 'serial' && serial.trim()) {
+                const validation = validateSmartScan('serial', serial);
+                if (!validation.valid) {
+                    showToast(validation.message, 'error');
+                    triggerFeedback('error');
+                    setSerial("");
+                    serialRef.current?.focus();
+                    return;
+                }
+                addRecord();
+            }
             // Automatización Fase 8: En masivo, darle Enter a la cantidad guarda inmediatamente.
             else if (field === 'qty' && qty.trim()) addRecord();
             else if (field === 'note') addRecord();
