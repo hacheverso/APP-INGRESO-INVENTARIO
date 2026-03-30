@@ -820,8 +820,27 @@ export default function InventoryScannerApp() {
 
     // ====== SMART SCAN FILTER ======
     // Prevents the TERA scanner from accidentally reading nearby barcodes into the wrong field.
-    // UPC field: Only accepts numeric codes 8-13 digits (UPC-A=12, EAN-13=13, UPC-E=8)
-    // Serial field: Only accepts serials (starts with letter) or IMEI (15 digits). Rejects UPC-like codes.
+    // Also filters out junk scans: WiFi IDs, Bluetooth MACs, URLs from QR codes, etc.
+
+    const isJunkScan = (val: string): string | null => {
+        // MAC addresses (WiFi ID, Bluetooth ID): XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX
+        if (/^([0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}$/.test(val)) {
+            return '🚫 WiFi/Bluetooth ID detectado — ignorado';
+        }
+        // URLs from QR codes
+        if (/^https?:\/\//i.test(val) || /^www\./i.test(val)) {
+            return '🚫 URL/QR detectado — ignorado';
+        }
+        // URI schemes (ftp://, tel:, mailto:, etc.)
+        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(val)) {
+            return '🚫 Enlace detectado — ignorado';
+        }
+        // Very long garbage strings (>50 chars usually aren't valid barcodes or serials)
+        if (val.length > 50) {
+            return '🚫 Código demasiado largo — ignorado';
+        }
+        return null;
+    };
 
     const isLikelyUPC = (val: string): boolean => {
         // UPCs are purely numeric, 8-13 digits
@@ -837,11 +856,13 @@ export default function InventoryScannerApp() {
 
     const validateSmartScan = (field: string, value: string): { valid: boolean; message: string } => {
         const val = value.trim();
-        if (!val) return { valid: true, message: '' }; // Empty is handled elsewhere
+        if (!val) return { valid: true, message: '' };
+
+        // ---- JUNK FILTER (applies to ALL fields) ----
+        const junkMsg = isJunkScan(val);
+        if (junkMsg) return { valid: false, message: junkMsg };
 
         if (field === 'upc') {
-            // UPC field: Must look like a barcode (numeric, 8-13 digits)
-            // Also accept if it's a known product in the DB (edge case: custom barcodes)
             if (productDB[val]) return { valid: true, message: '' };
             if (isLikelySerial(val) && !isLikelyUPC(val)) {
                 return { 
@@ -849,12 +870,10 @@ export default function InventoryScannerApp() {
                     message: `⚠️ Eso parece un SERIAL, no un UPC. Escanea el código de barras del producto.`
                 };
             }
-            // Accept anything numeric or known — allow broad match for UPC field
             return { valid: true, message: '' };
         }
 
         if (field === 'serial') {
-            // Serial field: Reject if it looks like a UPC barcode
             if (isLikelyUPC(val) && !(/^\d{15}$/.test(val))) {
                 return {
                     valid: false,
@@ -866,6 +885,7 @@ export default function InventoryScannerApp() {
 
         return { valid: true, message: '' };
     };
+
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, field: string) => {
         if (e.key === 'Escape') {
