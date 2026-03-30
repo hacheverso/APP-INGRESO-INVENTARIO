@@ -96,6 +96,7 @@ export default function InventoryScannerApp() {
     const [showNewProductModal, setShowNewProductModal] = useState(false);
     const [newProductForm, setNewProductForm] = useState({ UPC: '', NOMBRE: '', SKU: '', IMAGEN: '' });
     const [productSearchTerm, setProductSearchTerm] = useState("");
+    const [unknownUpc, setUnknownUpc] = useState<string | null>(null); // Product-not-found prompt
 
     // Google Sheets Connection State
     const [sheetsConnected, setSheetsConnected] = useState(false);
@@ -285,21 +286,36 @@ export default function InventoryScannerApp() {
         }, 4000);
     };
 
-    const playBeep = (type: 'success' | 'error') => {
+    const playBeep = (type: 'success' | 'error' | 'warning') => {
         try {
             const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
             if (type === 'success') {
-                // Pleasant ascending double-tone
-                const osc1 = ctx.createOscillator();
-                const gain1 = ctx.createGain();
-                osc1.type = 'sine';
-                osc1.frequency.setValueAtTime(880, ctx.currentTime);
-                osc1.frequency.setValueAtTime(1174.66, ctx.currentTime + 0.08);
-                gain1.gain.setValueAtTime(0.3, ctx.currentTime);
-                gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
-                osc1.connect(gain1).connect(ctx.destination);
-                osc1.start(ctx.currentTime);
-                osc1.stop(ctx.currentTime + 0.2);
+                // Satisfying triple-chime (cash register feel)
+                const notes = [523.25, 659.25, 783.99]; // C5, E5, G5 (major chord)
+                notes.forEach((freq, i) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.08);
+                    gain.gain.setValueAtTime(0.25, ctx.currentTime + i * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.08 + 0.25);
+                    osc.connect(gain).connect(ctx.destination);
+                    osc.start(ctx.currentTime + i * 0.08);
+                    osc.stop(ctx.currentTime + i * 0.08 + 0.25);
+                });
+            } else if (type === 'warning') {
+                // Questioning two-tone (low-high, like "huh?")
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(330, ctx.currentTime);
+                osc.frequency.setValueAtTime(440, ctx.currentTime + 0.15);
+                osc.frequency.setValueAtTime(330, ctx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.45);
+                osc.connect(gain).connect(ctx.destination);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.45);
             } else {
                 // Harsh low double-beep for error
                 [0, 0.18].forEach(offset => {
@@ -554,6 +570,7 @@ export default function InventoryScannerApp() {
 
         if (productDB[upcVal]) {
             setMatchedProduct(productDB[upcVal]);
+            setUnknownUpc(null);
             speakProduct(productDB[upcVal].NOMBRE);
 
             // Expand latest group automatically and close others briefly for focus
@@ -562,9 +579,11 @@ export default function InventoryScannerApp() {
             if (mode === 'UPC_SERIAL') serialRef.current?.focus();
             else qtyRef.current?.focus();
         } else {
-            setNewProductForm({ UPC: upcVal, NOMBRE: '', SKU: '', IMAGEN: '' });
-            setShowNewProductModal(true);
-            setTimeout(() => modalNameRef.current?.focus(), 100);
+            // Product not found — show inline prompt instead of auto-opening modal
+            setUnknownUpc(upcVal);
+            setMatchedProduct(null);
+            if (isAudioEnabled) playBeep('warning');
+            showToast(`⚠️ Producto no encontrado: ${upcVal}`, 'error');
         }
     };
 
@@ -1883,6 +1902,41 @@ export default function InventoryScannerApp() {
                                             )}
                                         </div>
                                     </div>
+                                ) : unknownUpc ? (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 z-30 bg-dark-input rounded-3xl animate-in slide-in-from-bottom-4 duration-300">
+                                        <div className="flex flex-col items-center gap-5 text-center">
+                                            <div className="w-20 h-20 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center animate-pulse">
+                                                <AlertTriangle size={40} className="text-amber-500" />
+                                            </div>
+                                            <h2 className="text-xl md:text-2xl font-black text-amber-400 uppercase tracking-wider">Producto No Encontrado</h2>
+                                            <span className="text-white font-mono text-2xl md:text-3xl tracking-widest font-black">{unknownUpc}</span>
+                                            <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">¿Deseas crear este producto?</p>
+                                            <div className="flex gap-3 pointer-events-auto">
+                                                <button
+                                                    onClick={() => {
+                                                        setNewProductForm({ UPC: unknownUpc, NOMBRE: '', SKU: '', IMAGEN: '' });
+                                                        setShowNewProductModal(true);
+                                                        setUnknownUpc(null);
+                                                        setTimeout(() => modalNameRef.current?.focus(), 100);
+                                                    }}
+                                                    className="px-8 py-3 bg-amber-500 hover:bg-amber-400 text-black font-black text-sm uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/40 hover:scale-105"
+                                                >
+                                                    <PlusCircle size={16} className="inline mr-2" />
+                                                    Crear Producto
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setUnknownUpc(null);
+                                                        setUpc("");
+                                                        upcRef.current?.focus();
+                                                    }}
+                                                    className="px-6 py-3 bg-dark-input hover:bg-gray-800 text-gray-400 hover:text-white font-black text-sm uppercase tracking-widest rounded-xl border border-dark-border hover:border-gray-600 transition-all"
+                                                >
+                                                    Ignorar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 ) : null}
 
 
@@ -1893,8 +1947,9 @@ export default function InventoryScannerApp() {
                                         ref={upcRef}
                                         type="text"
                                         value={upc}
-                                        onChange={(e) => { setUpc(e.target.value); setMatchedProduct(null); }}
+                                        onChange={(e) => { setUpc(e.target.value); setMatchedProduct(null); setUnknownUpc(null); }}
                                         onKeyDown={(e) => handleKeyDown(e, 'upc')}
+
                                         className="w-full bg-transparent outline-none text-center text-4xl md:text-5xl font-black tracking-widest uppercase text-gray-200 placeholder-[#1d1f27]"
                                         placeholder="ESPERANDO UPC..."
                                         autoFocus
