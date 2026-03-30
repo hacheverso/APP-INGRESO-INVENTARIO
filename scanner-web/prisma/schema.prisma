@@ -57,9 +57,11 @@ model HistoryRecord {
   fecha     String
   cantidad  Int
   seriales  String
+  tipo      String   @default("MASIVO")
   upc       String
   sku       String
   nombre    String
+  imagen    String   @default("")
   costoUsd  Float
   costoCop  Float
   trm       Float

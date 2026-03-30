@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSession } from '@/lib/auth';
+import { fetchSheetsProducts } from '@/lib/sheets';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,13 @@ export async function GET() {
             }
         });
 
+        // Fetch sheets data for image enrichment
+        let sheetsData: Record<string, any> = {};
+        try {
+            const sheets = await fetchSheetsProducts();
+            if (sheets.success) sheetsData = sheets.data;
+        } catch (_) { /* ignore sheets failures */ }
+
         const formattedSessions = sessions.map(s => ({
             id: s.id,
             fecha: s.date,
@@ -31,12 +39,15 @@ export async function GET() {
             records: s.records.map(r => {
                 const serialesArray = JSON.parse(r.seriales || '[]');
                 const isUSD = r.costoUsd > 0;
+                // Image: use stored image, or fall back to sheets data
+                const storedImagen = r.imagen || '';
+                const sheetsImagen = sheetsData[r.upc]?.IMAGEN || '';
                 return {
                     ID: r.id,
                     FechaHora: r.fecha,
                     Lote: s.batchName || "",
                     Proveedor: s.provider || "",
-                    Tipo: "NUBESYNC",
+                    Tipo: r.tipo || (serialesArray.length > 0 && serialesArray[0] ? 'SERIAL' : 'MASIVO'),
                     UPC: r.upc,
                     Nombre: r.nombre,
                     SKU: r.sku,
@@ -47,7 +58,7 @@ export async function GET() {
                     CostoUnitario: isUSD ? r.costoUsd : (r.cantidad > 0 ? r.costoCop / r.cantidad : 0),
                     TasaCambio: r.trm || 1,
                     CostoTotalCOP: r.costoCop,
-                    Imagen: ""
+                    Imagen: storedImagen || sheetsImagen
                 };
             })
         }));
@@ -99,9 +110,11 @@ export async function POST(req: Request) {
                         fecha: r.FechaHora || new Date().toISOString(),
                         cantidad: r.Cantidad || 1,
                         seriales: JSON.stringify(r.Serial ? [r.Serial] : []),
+                        tipo: r.Tipo || 'MASIVO',
                         upc: r.UPC,
                         sku: r.SKU || '',
                         nombre: r.Nombre || 'Producto Sin Nombre',
+                        imagen: r.Imagen || '',
                         costoUsd: r.Moneda === 'USD' ? (r.CostoUnitario || 0) : 0,
                         costoCop: r.CostoTotalCOP || 0,
                         trm: r.TasaCambio || 1
