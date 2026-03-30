@@ -702,12 +702,13 @@ export default function InventoryScannerApp() {
                 serialRef.current?.focus();
                 return;
             }
-            const serialExceptions = ['XBOX', 'META QUEST'];
+            const serialExceptions = ['XBOX', 'META QUEST', 'META', 'RAY-BAN', 'RAYBAN', 'RAY BAN', 'OAKLEY'];
             const productName = (matchedProduct?.NOMBRE || '').toUpperCase();
             const isException = serialExceptions.some(ex => productName.includes(ex));
             const isIMEI = /^\d{15}$/.test(serialVal);
-            if (!isException && !isIMEI && !/^[A-Za-z]/.test(serialVal)) {
-                showToast(`Error: El serial debe comenzar con una letra (o ser un IMEI de 15 dígitos): ${serialVal}`, 'error');
+            const isMixedAlphanumeric = /[A-Za-z]/.test(serialVal) && /\d/.test(serialVal); // Has BOTH letters and numbers
+            if (!isException && !isIMEI && !isMixedAlphanumeric && !/^[A-Za-z]/.test(serialVal)) {
+                showToast(`Error: El serial debe contener letras (o ser un IMEI de 15 dígitos): ${serialVal}`, 'error');
                 triggerFeedback('error');
                 serialRef.current?.focus();
                 serialRef.current?.select();
@@ -867,10 +868,11 @@ export default function InventoryScannerApp() {
     };
 
     const isLikelySerial = (val: string): boolean => {
-        // Serials start with a letter OR are exactly 15-digit IMEI
+        // Serials: start with a letter, OR are 15-digit IMEI, OR mixed alphanumeric (letters+digits)
         const isIMEI = /^\d{15}$/.test(val);
         const startsWithLetter = /^[A-Za-z]/.test(val);
-        return startsWithLetter || isIMEI;
+        const isMixedAlphanumeric = /[A-Za-z]/.test(val) && /\d/.test(val); // e.g. Meta serial "4ABC123"
+        return startsWithLetter || isIMEI || isMixedAlphanumeric;
     };
 
     const validateSmartScan = (field: string, value: string): { valid: boolean; message: string } => {
