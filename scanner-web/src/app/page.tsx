@@ -1247,38 +1247,24 @@ export default function InventoryScannerApp() {
 
     const handleUpdateUpcCost = (upc: string, unitCostValue: string) => {
         const unitCostNum = parseFloat(unitCostValue);
-        // Permite borrar el campo permitiendo NaN, caerá en 0 o cadena vacía si usamos strings, pero dejémoslo como NaN/0
         const finalUnitCost = isNaN(unitCostNum) ? 0 : unitCostNum;
 
         setRecords(prev => prev.map(r => {
             if (r.UPC === upc) {
-                // The item's individual total cost is its quantity * unit cost
                 const itemTotalCost = r.Cantidad * finalUnitCost;
-                // Translate that into COP if necessary
                 const finalCostoTotalCOP = r.Moneda === 'USD' ? (itemTotalCost * r.TasaCambio) : itemTotalCost;
 
                 return {
                     ...r,
-                    CostoUnitario: isNaN(unitCostNum) ? ("" as any) : finalUnitCost, // Hack to allow empty string
+                    CostoUnitario: isNaN(unitCostNum) ? ("" as any) : finalUnitCost,
                     CostoTotalCOP: finalCostoTotalCOP
                 };
             }
             return r;
         }));
-
-        // Actualizar el costo histórico en la base de datos de productos (ProductDB)
-        if (!isNaN(unitCostNum) && unitCostNum > 0) {
-            setProductDB(prev => {
-                const existingProduct = prev[upc];
-                if (existingProduct) {
-                    return {
-                        ...prev,
-                        [upc]: { ...existingProduct, LastCost: unitCostNum }
-                    };
-                }
-                return prev;
-            });
-        }
+        // Note: LastCost in productDB is NOT updated here on purpose.
+        // It only updates when the session is saved to the cloud (saveSessionToCloud),
+        // so the "Último" indicator always shows the PREVIOUS session's cost for comparison.
     };
 
     // --------------------------------------------------------------------
