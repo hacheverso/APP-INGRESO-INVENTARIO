@@ -1021,10 +1021,11 @@ export default function InventoryScannerApp() {
                 "UPC": r.UPC,
                 "SKU": r.SKU,
                 "NOMBRE": r.Nombre,
-                "COSTO USD": r.Moneda === 'USD' ? r.CostoUnitario : (r.CostoUnitario / r.TasaCambio).toFixed(2), // Aproximación si se entró en COP
+                "COSTO USD": r.Moneda === 'USD' ? r.CostoUnitario : (r.CostoUnitario / r.TasaCambio).toFixed(2),
                 "CAMBIO": r.TasaCambio,
                 "COSTO COP": r.CostoTotalCOP,
-                "PROVEEDOR": sessionProvider || r.Proveedor
+                "PROVEEDOR": sessionProvider || r.Proveedor,
+                "IMAGEN": r.Imagen || ''
             };
         }).sort((a, b) => {
             // Ordenar alfabéticamente por Nombre del Producto
@@ -1047,6 +1048,7 @@ export default function InventoryScannerApp() {
             { wch: 10 }, // CAMBIO
             { wch: 15 }, // COSTO COP
             { wch: 25 }, // PROVEEDOR
+            { wch: 60 }, // IMAGEN
         ];
         worksheet['!cols'] = colWidths;
 
