@@ -755,15 +755,16 @@ export default function InventoryScannerApp() {
             finalTipo = "MASIVO";
         }
 
-        // Calcular Finanzas (El costo se asignará ahora desde la tarjeta)
-        const parsedCost = 0;
+        // Calcular Finanzas — heredar costo de registros existentes con el mismo UPC
+        const existingRecord = records.find(r => r.UPC === upcVal && r.CostoUnitario > 0);
+        const parsedCost = existingRecord ? existingRecord.CostoUnitario : 0;
         const parsedExRate = parseFloat(exchangeRate) || 0;
 
         let finalCostoTotalCOP = 0;
         if (currency === 'USD') {
             finalCostoTotalCOP = parsedQty * parsedCost * parsedExRate;
         } else {
-            finalCostoTotalCOP = parsedQty * parsedCost; // Directo
+            finalCostoTotalCOP = parsedQty * parsedCost;
         }
 
         const now = new Date();
