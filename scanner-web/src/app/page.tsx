@@ -286,7 +286,7 @@ export default function InventoryScannerApp() {
         }, 4000);
     };
 
-    const playBeep = (type: 'success' | 'error' | 'warning') => {
+    const playBeep = (type: 'success' | 'error' | 'warning' | 'duplicate') => {
         try {
             const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
             if (type === 'success') {
@@ -316,6 +316,20 @@ export default function InventoryScannerApp() {
                 osc.connect(gain).connect(ctx.destination);
                 osc.start(ctx.currentTime);
                 osc.stop(ctx.currentTime + 0.45);
+            } else if (type === 'duplicate') {
+                // Rapid descending triple-beep ("ya lo tienes") — high→mid→low
+                const notes = [880, 660, 440];
+                notes.forEach((freq, i) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.1);
+                    gain.gain.setValueAtTime(0.2, ctx.currentTime + i * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.1 + 0.08);
+                    osc.connect(gain).connect(ctx.destination);
+                    osc.start(ctx.currentTime + i * 0.1);
+                    osc.stop(ctx.currentTime + i * 0.1 + 0.08);
+                });
             } else {
                 // Harsh low double-beep for error
                 [0, 0.18].forEach(offset => {
@@ -335,8 +349,8 @@ export default function InventoryScannerApp() {
         }
     };
 
-    const triggerFeedback = (status: 'success' | 'error') => {
-        setScanStatus(status);
+    const triggerFeedback = (status: 'success' | 'error' | 'duplicate') => {
+        setScanStatus(status === 'duplicate' ? 'error' : status);
         setIsFlashing(true);
         if (isAudioEnabled) playBeep(status);
         setTimeout(() => {
@@ -715,8 +729,8 @@ export default function InventoryScannerApp() {
                 return;
             }
             if (records.some(r => r.Serial === serialVal)) {
-                showToast(`Error: El serial ya fue ingresado: ${serialVal}`, 'error');
-                triggerFeedback('error');
+                showToast(`⚠️ Serial DUPLICADO: ${serialVal} — ya fue ingresado`, 'error');
+                triggerFeedback('duplicate');
                 serialRef.current?.focus();
                 serialRef.current?.select();
                 return;
