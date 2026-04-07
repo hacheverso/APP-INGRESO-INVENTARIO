@@ -21,10 +21,16 @@ export async function GET() {
         const session = await getSession();
         if (!session) return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
 
+        // Fetch user's sheetsUrl from DB
+        const user = await prisma.user.findUnique({
+            where: { id: session.userId },
+            select: { sheetsUrl: true }
+        });
+
         // Fetch DB products and Google Sheets products in parallel
         const [dbProducts, sheetsResult] = await Promise.all([
             prisma.product.findMany({ where: { userId: session.userId } }),
-            fetchSheetsProducts()
+            fetchSheetsProducts(user?.sheetsUrl)
         ]);
 
         const productDB: Record<string, any> = {};

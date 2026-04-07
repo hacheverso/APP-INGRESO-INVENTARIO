@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning, Search, LogOut, RefreshCw } from 'lucide-react';
+import { Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning, Search, LogOut, RefreshCw, Link2, Pencil, Check, ExternalLink, ClipboardPaste } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { v4 as uuidv4 } from 'uuid';
@@ -103,6 +103,9 @@ export default function InventoryScannerApp() {
     const [sheetsProductCount, setSheetsProductCount] = useState(0);
     const [sheetsLastSync, setSheetsLastSync] = useState<string | null>(null);
     const [sheetsSyncing, setSheetsSyncing] = useState(false);
+    const [sheetsUrl, setSheetsUrl] = useState<string | null>(null);
+    const [showSheetsUrlModal, setShowSheetsUrlModal] = useState(false);
+    const [sheetsUrlInput, setSheetsUrlInput] = useState('');
 
     // Flash Feedback System (Phase 10)
     const [scanStatus, setScanStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -175,9 +178,16 @@ export default function InventoryScannerApp() {
             }
         }
 
-        // Fetch Data from Neon Postgres (Products and Sessions)
+        // Fetch Data from Neon Postgres (Products, Sessions, and Sheets URL)
         const fetchRemoteData = async () => {
             try {
+                // Fetch user's sheets URL first
+                const sheetsUrlRes = await fetch('/api/user/sheets-url');
+                const sheetsUrlData = await sheetsUrlRes.json();
+                if (sheetsUrlData.success) {
+                    setSheetsUrl(sheetsUrlData.sheetsUrl || null);
+                }
+
                 // Products
                 const prodRes = await fetch('/api/products');
                 const prodData = await prodRes.json();
@@ -1453,6 +1463,187 @@ export default function InventoryScannerApp() {
                 </div>
             )}
 
+            {/* Modal: Configurar URL de Google Sheets */}
+            {showSheetsUrlModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowSheetsUrlModal(false)}>
+                    <div className="bg-[#0F1014] border border-dark-border rounded-3xl w-[520px] overflow-hidden shadow-2xl shadow-emerald-500/5 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                        {/* Header */}
+                        <div className="px-6 py-4 border-b border-dark-border flex items-center gap-3 bg-gradient-to-r from-emerald-900/30 to-transparent">
+                            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                                <Link2 size={20} className="text-emerald-400" />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="font-black text-white text-sm uppercase tracking-wider">Base de Datos</h3>
+                                <p className="text-[10px] text-gray-500 font-bold tracking-widest uppercase">Google Sheets — Configuración Personal</p>
+                            </div>
+                            <button onClick={() => setShowSheetsUrlModal(false)} className="text-gray-600 hover:text-white transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="p-6 flex flex-col gap-5">
+                            <p className="text-gray-400 text-xs font-medium leading-relaxed">
+                                Pega el link de tu Google Sheets que contiene el inventario. 
+                                El sheet debe ser <span className="text-emerald-400 font-bold">público</span> o compartido con acceso de lectura.
+                                Cada usuario puede tener su propia base de datos independiente.
+                            </p>
+
+                            {/* URL Input */}
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">URL del Spreadsheet</label>
+                                <div className="flex gap-2">
+                                    <div className="flex-1 relative">
+                                        <input
+                                            type="url"
+                                            value={sheetsUrlInput}
+                                            onChange={e => setSheetsUrlInput(e.target.value)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    document.getElementById('sheets-url-save-btn')?.click();
+                                                }
+                                            }}
+                                            className="w-full bg-dark-input border border-dark-border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/30 transition-all text-white placeholder-gray-600 font-mono text-xs"
+                                            placeholder="https://docs.google.com/spreadsheets/d/..."
+                                            autoFocus
+                                        />
+                                        {sheetsUrlInput && sheetsUrlInput.includes('docs.google.com/spreadsheets') && (
+                                            <Check size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-400" />
+                                        )}
+                                    </div>
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                const text = await navigator.clipboard.readText();
+                                                if (text) {
+                                                    setSheetsUrlInput(text);
+                                                    showToast("URL pegada del portapapeles", "success");
+                                                }
+                                            } catch {
+                                                showToast("No se pudo leer el portapapeles", "error");
+                                            }
+                                        }}
+                                        className="px-3 py-3 bg-dark-input border border-dark-border hover:bg-white/5 text-gray-500 hover:text-white rounded-xl transition-all"
+                                        title="Pegar del portapapeles"
+                                    >
+                                        <ClipboardPaste size={16} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Current status */}
+                            {sheetsUrl && (
+                                <div className="flex items-center gap-3 bg-emerald-900/10 border border-emerald-500/10 rounded-xl px-4 py-3">
+                                    <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[10px] text-emerald-400/80 font-bold uppercase tracking-widest mb-0.5">Conectado actualmente</p>
+                                        <p className="text-xs text-gray-400 font-mono truncate">{sheetsUrl}</p>
+                                    </div>
+                                    <a href={sheetsUrl} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-emerald-400 transition-colors shrink-0">
+                                        <ExternalLink size={14} />
+                                    </a>
+                                </div>
+                            )}
+
+                            {/* Validation hint */}
+                            {sheetsUrlInput && !sheetsUrlInput.includes('docs.google.com/spreadsheets') && (
+                                <div className="flex items-center gap-2 text-amber-500 text-[11px] font-bold">
+                                    <AlertTriangle size={14} />
+                                    <span>La URL debe ser de Google Sheets (docs.google.com/spreadsheets/...)</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-6 py-4 bg-dark-input/50 flex items-center justify-between gap-3 border-t border-dark-border">
+                            {sheetsUrl && (
+                                <button
+                                    onClick={async () => {
+                                        if (!confirm('¿Desconectar Google Sheets? Los productos del Sheets ya no aparecerán en el catálogo.')) return;
+                                        try {
+                                            const res = await fetch('/api/user/sheets-url', {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ sheetsUrl: null })
+                                            });
+                                            const data = await res.json();
+                                            if (data.success) {
+                                                setSheetsUrl(null);
+                                                setSheetsConnected(false);
+                                                setSheetsProductCount(0);
+                                                setShowSheetsUrlModal(false);
+                                                showToast('Google Sheets desconectado', 'info');
+                                            }
+                                        } catch {
+                                            showToast('Error al desconectar', 'error');
+                                        }
+                                    }}
+                                    className="text-[10px] font-bold text-red-500/60 hover:text-red-400 uppercase tracking-widest transition-colors"
+                                >
+                                    Desconectar
+                                </button>
+                            )}
+                            <div className="flex gap-3 ml-auto">
+                                <button 
+                                    onClick={() => setShowSheetsUrlModal(false)} 
+                                    className="px-5 py-2.5 font-bold text-gray-500 text-xs hover:text-white transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    id="sheets-url-save-btn"
+                                    disabled={!sheetsUrlInput || !sheetsUrlInput.includes('docs.google.com/spreadsheets')}
+                                    onClick={async () => {
+                                        try {
+                                            const res = await fetch('/api/user/sheets-url', {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ sheetsUrl: sheetsUrlInput })
+                                            });
+                                            const data = await res.json();
+                                            if (data.success) {
+                                                setSheetsUrl(data.sheetsUrl);
+                                                setShowSheetsUrlModal(false);
+                                                showToast('✅ URL de Google Sheets guardada. Sincronizando...', 'success');
+                                                
+                                                // Auto-sync after saving
+                                                setSheetsSyncing(true);
+                                                try {
+                                                    const prodRes = await fetch('/api/products');
+                                                    const prodData = await prodRes.json();
+                                                    if (prodData.success && prodData.data) {
+                                                        setProductDB(prodData.data);
+                                                        setSheetsConnected(prodData.sheetsConnected === true);
+                                                        if (prodData.sheetsConnected) {
+                                                            setSheetsProductCount(Object.keys(prodData.data).length);
+                                                            setSheetsLastSync(prodData.lastSheetsUpdate || new Date().toISOString());
+                                                        }
+                                                        showToast(`📊 Catálogo sincronizado: ${Object.keys(prodData.data).length} productos`, 'success');
+                                                    }
+                                                } catch {
+                                                    showToast('URL guardada pero error al sincronizar', 'error');
+                                                } finally {
+                                                    setSheetsSyncing(false);
+                                                }
+                                            } else {
+                                                showToast(data.error || 'Error al guardar la URL', 'error');
+                                            }
+                                        } catch {
+                                            showToast('Error de conexión', 'error');
+                                        }
+                                    }}
+                                    className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-xs rounded-xl transition-all shadow-lg shadow-emerald-500/10 disabled:shadow-none uppercase tracking-wider"
+                                >
+                                    <Check size={14} />
+                                    Guardar y Sincronizar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Header Global (Dark Terminal UI) */}
             <header className="bg-dark-bg px-6 lg:px-8 py-5 mt-6 flex flex-wrap items-center justify-between z-10 transition-colors duration-300 gap-4">
                 {/* Zona Izquierda: Identidad */}
@@ -1513,46 +1704,75 @@ export default function InventoryScannerApp() {
                     {/* Herramientas Secundarias (Iconos y Botón Principal Historial) */}
                     <div className="flex items-center gap-2">
                         {/* Google Sheets Connection Indicator */}
-                        <button 
-                            onClick={async () => {
-                                setSheetsSyncing(true);
-                                try {
-                                    const res = await fetch('/api/products');
-                                    const data = await res.json();
-                                    if (data.success && data.data) {
-                                        setProductDB(data.data);
-                                        setSheetsConnected(data.sheetsConnected === true);
-                                        if (data.sheetsConnected) {
-                                            setSheetsProductCount(Object.keys(data.data).length);
-                                            setSheetsLastSync(data.lastSheetsUpdate || new Date().toISOString());
-                                        }
-                                        showToast(`📊 Catálogo sincronizado: ${Object.keys(data.data).length} productos`, 'success');
+                        <div className="flex items-center gap-0.5">
+                            <button 
+                                onClick={async () => {
+                                    if (!sheetsUrl) {
+                                        // No URL configured — open the modal to paste one
+                                        setSheetsUrlInput('');
+                                        setShowSheetsUrlModal(true);
+                                        return;
                                     }
-                                } catch (err) {
-                                    showToast('Error sincronizando con Google Sheets', 'error');
-                                    setSheetsConnected(false);
-                                } finally {
-                                    setSheetsSyncing(false);
+                                    setSheetsSyncing(true);
+                                    try {
+                                        const res = await fetch('/api/products');
+                                        const data = await res.json();
+                                        if (data.success && data.data) {
+                                            setProductDB(data.data);
+                                            setSheetsConnected(data.sheetsConnected === true);
+                                            if (data.sheetsConnected) {
+                                                setSheetsProductCount(Object.keys(data.data).length);
+                                                setSheetsLastSync(data.lastSheetsUpdate || new Date().toISOString());
+                                            }
+                                            showToast(`📊 Catálogo sincronizado: ${Object.keys(data.data).length} productos`, 'success');
+                                        }
+                                    } catch (err) {
+                                        showToast('Error sincronizando con Google Sheets', 'error');
+                                        setSheetsConnected(false);
+                                    } finally {
+                                        setSheetsSyncing(false);
+                                    }
+                                }}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-xs font-bold ${
+                                    sheetsConnected 
+                                        ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/40' 
+                                        : sheetsUrl 
+                                            ? 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-300'
+                                            : 'bg-dark-input border-dashed border-emerald-500/40 text-emerald-500/70 hover:text-emerald-400 hover:border-emerald-500/60'
+                                } ${sheetsUrl ? 'rounded-r-none border-r-0' : ''}`}
+                                title={sheetsConnected 
+                                    ? `Google Sheets conectado — ${sheetsProductCount} productos | Última sync: ${sheetsLastSync ? new Date(sheetsLastSync).toLocaleTimeString('es-CO') : 'N/A'}` 
+                                    : sheetsUrl
+                                        ? 'Click para sincronizar'
+                                        : 'Click para configurar tu base de datos Google Sheets'
                                 }
-                            }}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-xs font-bold ${
-                                sheetsConnected 
-                                    ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/40' 
-                                    : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-300'
-                            }`}
-                            title={sheetsConnected 
-                                ? `Google Sheets conectado — ${sheetsProductCount} productos | Última sync: ${sheetsLastSync ? new Date(sheetsLastSync).toLocaleTimeString('es-CO') : 'N/A'}` 
-                                : 'Google Sheets no conectado — Click para sincronizar'
-                            }
-                        >
-                            <div className="relative">
-                                <RefreshCw size={14} className={sheetsSyncing ? 'animate-spin' : ''} />
-                                <div className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ${sheetsConnected ? 'bg-emerald-400' : 'bg-gray-600'}`} />
-                            </div>
-                            <span className="hidden md:inline">
-                                {sheetsSyncing ? 'Sincronizando...' : sheetsConnected ? `${sheetsProductCount}` : 'Sync'}
-                            </span>
-                        </button>
+                            >
+                                <div className="relative">
+                                    {sheetsUrl ? (
+                                        <RefreshCw size={14} className={sheetsSyncing ? 'animate-spin' : ''} />
+                                    ) : (
+                                        <Link2 size={14} />
+                                    )}
+                                    <div className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ${sheetsConnected ? 'bg-emerald-400' : sheetsUrl ? 'bg-gray-600' : 'bg-amber-500 animate-pulse'}`} />
+                                </div>
+                                <span className="hidden md:inline">
+                                    {sheetsSyncing ? 'Sincronizando...' : sheetsConnected ? `${sheetsProductCount}` : sheetsUrl ? 'Sync' : 'Conectar BD'}
+                                </span>
+                            </button>
+                            {/* Edit Sheets URL button — only shown when URL is configured */}
+                            {sheetsUrl && (
+                                <button
+                                    onClick={() => {
+                                        setSheetsUrlInput(sheetsUrl || '');
+                                        setShowSheetsUrlModal(true);
+                                    }}
+                                    className="p-2 rounded-xl rounded-l-none border border-l-0 transition-all text-xs bg-dark-input border-dark-border text-gray-600 hover:text-emerald-400 hover:bg-emerald-900/20"
+                                    title="Cambiar URL de Google Sheets"
+                                >
+                                    <Pencil size={12} />
+                                </button>
+                            )}
+                        </div>
                         <button onClick={migrateLocalToCloud} className="p-2.5 bg-dark-input hover:bg-emerald-900/40 text-emerald-500 rounded-xl border border-dark-border hover:border-emerald-500/50 transition-all font-bold group" title="FORZAR: Migrar Backup Local a la Nube">
                             <CloudLightning size={16} className="group-hover:animate-pulse" />
                         </button>

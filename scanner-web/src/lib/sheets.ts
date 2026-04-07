@@ -1,16 +1,19 @@
-const SHEET_ID = '1YhP89Gy9mZQ62jyB61SJDSEC04yxlEiuVPZcjt4AYwY';
-const SHEET_NAME = 'INVENTARIO';
-const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(SHEET_NAME)}`;
-
-// In-memory cache to avoid hammering Google Sheets on every request
-let cachedData: { data: Record<string, any>; timestamp: number } | null = null;
+// Per-user cache keyed by sheetsUrl
+const cacheMap = new Map<string, { data: Record<string, any>; timestamp: number }>();
 const CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
+function extractSheetIdAndName(url: string): { sheetId: string; sheetName: string } | null {
+    // Supports URLs like:
+    // https://docs.google.com/spreadsheets/d/SHEET_ID/edit#gid=0
+    // https://docs.google.com/spreadsheets/d/SHEET_ID/edit?gid=0
+    // https://docs.google.com/spreadsheets/d/SHEET_ID
+    const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+    if (!match) return null;
+    return { sheetId: match[1], sheetName: 'INVENTARIO' }; // Default sheet name
+}
 
 function parseCurrencyCOP(val: string): number {
     if (!val) return 0;
-    // Google CSV exports values like "$95,000" or "$1,682,044" or "$18,436,400"
-    // Colombian locale may use dots: "$95.000"
-    // Strip everything except digits and minus sign
     const cleaned = val.replace(/[^0-9-]/g, '');
     const num = parseInt(cleaned, 10);
     return isNaN(num) ? 0 : num;
@@ -64,8 +67,22 @@ export interface SheetsResult {
     lastFetched: string;
 }
 
-export async function fetchSheetsProducts(): Promise<SheetsResult> {
+export async function fetchSheetsProducts(sheetsUrl?: string | null): Promise<SheetsResult> {
+    // If no URL provided, return empty (no sheets configured for this user)
+    if (!sheetsUrl) {
+        return { success: false, data: {}, count: 0, lastFetched: '' };
+    }
+
+    const parsed = extractSheetIdAndName(sheetsUrl);
+    if (!parsed) {
+        return { success: false, data: {}, count: 0, lastFetched: '' };
+    }
+
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${parsed.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(parsed.sheetName)}`;
+    const cacheKey = sheetsUrl;
+
     // Return cached data if still fresh
+    const cachedData = cacheMap.get(cacheKey);
     if (cachedData && (Date.now() - cachedData.timestamp) < CACHE_TTL_MS) {
         return {
             success: true,
@@ -76,11 +93,10 @@ export async function fetchSheetsProducts(): Promise<SheetsResult> {
     }
 
     try {
-        const response = await fetch(CSV_URL);
+        const response = await fetch(csvUrl);
 
         if (!response.ok) {
             console.error(`Google Sheets returned ${response.status}`);
-            // Return cached data if available (stale cache is better than nothing)
             if (cachedData) {
                 return {
                     success: true,
@@ -100,7 +116,6 @@ export async function fetchSheetsProducts(): Promise<SheetsResult> {
 
         const headers = parseCSVLine(lines[0]);
 
-        // Find column indices
         const colBarcode = headers.findIndex(h => h.toUpperCase().includes('BARCODE') || h.toUpperCase().includes('UPC'));
         const colSKU = headers.findIndex(h => h.toUpperCase() === 'SKU');
         const colNombre = headers.findIndex(h => h.toUpperCase().includes('NOMBRE') || h.toUpperCase().includes('NAME'));
@@ -136,20 +151,17 @@ export async function fetchSheetsProducts(): Promise<SheetsResult> {
             const costoTotal = colCostoTotal >= 0 ? parseCurrencyCOP(cols[colCostoTotal] || '') : 0;
             const diasSinVender = colDiasSinVender >= 0 ? parseInt((cols[colDiasSinVender] || '0').trim(), 10) || 0 : 0;
 
-            // Only include products with a barcode (required for scanning)
             if (!barcode) continue;
 
             const key = barcode;
-
-            // Clean up imagen URL (remove trailing quotes/parens artifacts)
-            const cleanImagen = imagen.replace(/[")]+$/, '').replace(/^[("]+/, '');
+            const cleanImagen = imagen.replace(/[")}]+$/, '').replace(/^[("]+/, '');
 
             productDB[key] = {
                 UPC: barcode,
                 SKU: sku,
                 NOMBRE: nombre,
                 IMAGEN: cleanImagen,
-                LastCost: 0, // LastCost only comes from user-entered USD values (DB), not from Sheets COP data
+                LastCost: 0,
                 STOCK: stock,
                 PRECIO: precio,
                 COSTO: costo,
@@ -162,8 +174,8 @@ export async function fetchSheetsProducts(): Promise<SheetsResult> {
             count++;
         }
 
-        // Update cache
-        cachedData = { data: productDB, timestamp: Date.now() };
+        // Update cache for this URL
+        cacheMap.set(cacheKey, { data: productDB, timestamp: Date.now() });
 
         return {
             success: true,
@@ -173,7 +185,7 @@ export async function fetchSheetsProducts(): Promise<SheetsResult> {
         };
     } catch (error) {
         console.error('Error fetching Google Sheets:', error);
-        // Return stale cache if available
+        const cachedData = cacheMap.get(cacheKey);
         if (cachedData) {
             return {
                 success: true,
