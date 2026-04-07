@@ -263,18 +263,19 @@ export default function InventoryScannerApp() {
     }, [listaProveedores, isClient]);
 
     // Retroactividad: Si cambia la moneda global o la TRM, actualizar todos los registros activos en la sesión actual.
+    // USD = puro dólares (sin conversión). COP = ingreso en USD con conversión a pesos vía TRM.
     useEffect(() => {
         const currentExRate = parseFloat(exchangeRate) || 0;
         setRecords(prev => {
             if (prev.length === 0) return prev;
             let needsUpdate = false;
             const updated = prev.map(r => {
-                const targetTasa = currency === 'USD' ? currentExRate : 1;
+                const targetTasa = currency === 'COP' ? currentExRate : 1;
                 if (r.Moneda !== currency || r.TasaCambio !== targetTasa) {
                     needsUpdate = true;
-                    // Recalcular el costo total COP
                     const itemTotalCost = r.Cantidad * r.CostoUnitario;
-                    const finalCostoTotalCOP = currency === 'USD' ? (itemTotalCost * currentExRate) : itemTotalCost;
+                    // COP mode: multiply USD cost by TRM. USD mode: keep raw USD.
+                    const finalCostoTotalCOP = currency === 'COP' ? (itemTotalCost * currentExRate) : itemTotalCost;
                     return {
                         ...r,
                         Moneda: currency,
@@ -771,9 +772,11 @@ export default function InventoryScannerApp() {
         const parsedExRate = parseFloat(exchangeRate) || 0;
 
         let finalCostoTotalCOP = 0;
-        if (currency === 'USD') {
+        if (currency === 'COP') {
+            // COP mode: user enters USD price, system converts to COP via TRM
             finalCostoTotalCOP = parsedQty * parsedCost * parsedExRate;
         } else {
+            // USD mode: pure dollars, no conversion
             finalCostoTotalCOP = parsedQty * parsedCost;
         }
 
@@ -806,7 +809,7 @@ export default function InventoryScannerApp() {
                 ID: uuidv4().substring(0, 8),
                 Moneda: currency,
                 CostoUnitario: parsedCost,
-                TasaCambio: currency === 'USD' ? parsedExRate : 1,
+                TasaCambio: currency === 'COP' ? parsedExRate : 1,
                 CostoTotalCOP: finalCostoTotalCOP,
                 Imagen: matchedProduct?.IMAGEN || ''
             };
@@ -849,7 +852,7 @@ export default function InventoryScannerApp() {
                         ID: uuidv4().substring(0, 8),
                         Moneda: currency,
                         CostoUnitario: parsedCost,
-                        TasaCambio: currency === 'USD' ? parsedExRate : 1,
+                        TasaCambio: currency === 'COP' ? parsedExRate : 1,
                         CostoTotalCOP: finalCostoTotalCOP,
                         Imagen: matchedProduct?.IMAGEN || ''
                     });
@@ -1265,7 +1268,8 @@ export default function InventoryScannerApp() {
         setRecords(prev => prev.map(r => {
             if (r.UPC === upc) {
                 const itemTotalCost = r.Cantidad * finalUnitCost;
-                const finalCostoTotalCOP = r.Moneda === 'USD' ? (itemTotalCost * r.TasaCambio) : itemTotalCost;
+                // COP mode: multiply by TRM. USD mode: raw value.
+                const finalCostoTotalCOP = r.Moneda === 'COP' ? (itemTotalCost * r.TasaCambio) : itemTotalCost;
 
                 return {
                     ...r,
@@ -1725,16 +1729,7 @@ export default function InventoryScannerApp() {
 
                 {/* Zona Derecha: Finanzas y Herramientas Secundarias */}
                 <div className="flex flex-wrap items-center justify-end gap-3 z-20 relative">
-                    {/* Bloque Financiero Unificado (Moneda + TRM) */}
-                    <div className="flex items-center gap-1.5 bg-dark-input p-1 rounded-xl border border-dark-border">
-                        <div className="flex items-center">
-                            <button onClick={() => setCurrency('USD')} className={`px-3 py-1.5 text-[10px] md:text-xs font-bold rounded-lg transition-colors ${currency === 'USD' ? 'bg-[#1b5e20] text-emerald-400' : 'text-gray-500 hover:text-gray-300'}`}>USD</button>
-                            <button onClick={() => setCurrency('COP')} className={`px-3 py-1.5 text-[10px] md:text-xs font-bold rounded-lg transition-colors ${currency === 'COP' ? 'bg-brand-blue text-white' : 'text-gray-500 hover:text-gray-300'}`}>COP</button>
-                        </div>
-                        <div className={`flex items-center transition-opacity duration-300 ${currency === 'USD' ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
-                            <input type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} onWheel={(e) => e.currentTarget.blur()} onFocus={(e) => e.target.select()} disabled={currency === 'COP'} className="bg-black/20 px-2 py-1.5 rounded-lg text-xs font-bold text-gray-300 outline-none w-[60px] text-center" placeholder="TRM" />
-                        </div>
-                    </div>
+
 
                     {/* Herramientas Secundarias (Iconos y Botón Principal Historial) */}
                     <div className="flex items-center gap-2">
@@ -2108,7 +2103,7 @@ export default function InventoryScannerApp() {
                         {/* Left Panel: Inputs (Dark UI Mode) */}
                         <div className="w-full xl:w-[600px] flex flex-col gap-6 flex-shrink-0 animate-in slide-in-from-left-4 duration-300 xl:h-full">
 
-                            {/* Top Split Section: Total (Left) vs Controls (Right) */}
+                            {/* Top Split Section: Total (Left) + Currency (Center) + Controls (Right) */}
                             <div className="flex gap-4 min-h-[120px] shrink-0">
                                 {/* Total Ingresado Blue Card */}
                                 <div className="flex-1 bg-blue-600 rounded-3xl p-6 text-white flex justify-between items-end shadow-[0_0_30px_rgba(37,99,235,0.15)] relative overflow-hidden group">
@@ -2119,8 +2114,69 @@ export default function InventoryScannerApp() {
                                     </div>
                                     <div className="flex flex-col items-end relative z-10">
                                         <span className="text-2xl font-black uppercase tracking-widest leading-none drop-shadow-md">Unidades</span>
-                                        <span className="text-[9px] bg-white/20 text-white px-2 py-0.5 rounded-sm uppercase font-bold mt-2 shadow-sm tracking-wider">{currency} Mode</span>
                                     </div>
+                                </div>
+
+                                {/* CURRENCY SELECTOR — Prominent Card */}
+                                <div className={`w-[180px] rounded-3xl p-4 flex flex-col justify-between border-2 transition-all duration-300 relative overflow-hidden ${
+                                    currency === 'USD'
+                                        ? 'bg-gradient-to-br from-[#0d2818] to-[#0a1f13] border-emerald-500/40 shadow-[0_0_25px_rgba(16,185,129,0.1)]'
+                                        : 'bg-gradient-to-br from-[#0c1a3a] to-[#0a1228] border-brand-blue/40 shadow-[0_0_25px_rgba(37,99,235,0.1)]'
+                                }`}>
+                                    <div className="flex flex-col gap-1 relative z-10">
+                                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500">Moneda</span>
+                                        <span className={`text-2xl font-black tracking-wider leading-none ${currency === 'USD' ? 'text-emerald-400' : 'text-brand-blue'}`}>
+                                            {currency}
+                                        </span>
+                                        <span className="text-[8px] font-bold uppercase tracking-widest text-gray-600 mt-0.5">
+                                            {currency === 'USD' ? 'Solo dólares' : 'USD → COP'}
+                                        </span>
+                                    </div>
+
+                                    {/* Toggle Buttons */}
+                                    <div className="flex gap-1.5 mt-3 relative z-10">
+                                        <button
+                                            onClick={() => setCurrency('USD')}
+                                            className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
+                                                currency === 'USD'
+                                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.15)]'
+                                                    : 'bg-white/3 text-gray-600 border border-transparent hover:text-gray-400 hover:bg-white/5'
+                                            }`}
+                                        >
+                                            USD
+                                        </button>
+                                        <button
+                                            onClick={() => setCurrency('COP')}
+                                            className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
+                                                currency === 'COP'
+                                                    ? 'bg-brand-blue/20 text-blue-400 border border-brand-blue/30 shadow-[0_0_10px_rgba(37,99,235,0.15)]'
+                                                    : 'bg-white/3 text-gray-600 border border-transparent hover:text-gray-400 hover:bg-white/5'
+                                            }`}
+                                        >
+                                            COP
+                                        </button>
+                                    </div>
+
+                                    {/* TRM Input — Only visible in COP mode */}
+                                    <div className={`transition-all duration-300 overflow-hidden relative z-10 ${currency === 'COP' ? 'max-h-[50px] opacity-100 mt-2' : 'max-h-0 opacity-0 mt-0'}`}>
+                                        <div className="flex items-center gap-1.5 bg-black/30 rounded-lg px-2 py-1.5 border border-brand-blue/20">
+                                            <span className="text-[8px] font-bold text-brand-blue/60 uppercase tracking-widest">TRM</span>
+                                            <input
+                                                type="number"
+                                                value={exchangeRate}
+                                                onChange={(e) => setExchangeRate(e.target.value)}
+                                                onWheel={(e) => e.currentTarget.blur()}
+                                                onFocus={(e) => e.target.select()}
+                                                className="bg-transparent text-sm font-black text-blue-400 outline-none w-full text-center font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                placeholder="4000"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Decorative glow */}
+                                    <div className={`absolute -bottom-6 -right-6 w-24 h-24 rounded-full blur-2xl ${
+                                        currency === 'USD' ? 'bg-emerald-500/10' : 'bg-brand-blue/10'
+                                    }`} />
                                 </div>
 
                                 {/* Controls Vertical Stack */}
@@ -2336,13 +2392,13 @@ export default function InventoryScannerApp() {
                                                                     }}
                                                                 />
                                                             </div>
-                                                            <span className="text-[10px] uppercase font-bold tracking-widest text-gray-600 border border-gray-800 px-3 py-1.5 rounded">Costo Unit / {group.Records[0]?.Moneda || 'COP'}</span>
+                                                            <span className="text-[10px] uppercase font-bold tracking-widest text-gray-600 border border-gray-800 px-3 py-1.5 rounded">Costo Unit / USD</span>
                                                         </div>
 
                                                             {/* UI Inteligencia de Precios — Último Ingreso Histórico */}
                                                         <div className="flex items-center gap-3 pl-1 flex-wrap">
-                                                            {/* Equivalencia Directa a COP */}
-                                                            {(group.Records[0]?.Moneda === 'USD' && group.Records[0]?.CostoUnitario > 0) && (
+                                                            {/* Equivalencia Directa a COP — solo en modo COP */}
+                                                            {(group.Records[0]?.Moneda === 'COP' && group.Records[0]?.CostoUnitario > 0) && (
                                                                 <span className="text-[10px] font-mono text-gray-500 font-medium">
                                                                     ≈ {formatMoney((group.Records[0].CostoUnitario * (parseFloat(exchangeRate) || 1)), 'COP')}
                                                                 </span>
