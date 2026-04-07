@@ -2106,14 +2106,12 @@ export default function InventoryScannerApp() {
                             {/* Top Split Section: Total (Left) + Currency (Center) + Controls (Right) */}
                             <div className="flex gap-4 min-h-[120px] shrink-0">
                                 {/* Total Ingresado Blue Card */}
-                                <div className="flex-1 bg-blue-600 rounded-3xl p-6 text-white flex justify-between items-end shadow-[0_0_30px_rgba(37,99,235,0.15)] relative overflow-hidden group">
+                                <div className="flex-1 min-w-0 bg-blue-600 rounded-3xl p-5 text-white flex flex-col justify-between shadow-[0_0_30px_rgba(37,99,235,0.15)] relative overflow-hidden group">
                                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full transform translate-x-1/3 -translate-y-1/3 group-hover:bg-white/10 transition-colors"></div>
-                                    <div className="flex flex-col relative z-10">
-                                        <span className="text-[10px] font-bold uppercase tracking-widest opacity-80 mb-1">Total Ingresado</span>
-                                        <span className="text-7xl font-black leading-none drop-shadow-md">{totalUnits}</span>
-                                    </div>
-                                    <div className="flex flex-col items-end relative z-10">
-                                        <span className="text-2xl font-black uppercase tracking-widest leading-none drop-shadow-md">Unidades</span>
+                                    <span className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-70 relative z-10">Total Ingresado</span>
+                                    <div className="flex items-baseline gap-2 relative z-10 mt-auto">
+                                        <span className="text-6xl font-black leading-none drop-shadow-md">{totalUnits}</span>
+                                        <span className="text-lg font-black uppercase tracking-widest leading-none drop-shadow-md opacity-80">UND</span>
                                     </div>
                                 </div>
 
