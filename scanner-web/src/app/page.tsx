@@ -1489,6 +1489,41 @@ export default function InventoryScannerApp() {
                                 Cada usuario puede tener su propia base de datos independiente.
                             </p>
 
+                            {/* Column Requirements */}
+                            <div className="bg-dark-input/60 border border-dark-border rounded-xl p-4 flex flex-col gap-3">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <Database size={14} className="text-brand-blue" />
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Estructura requerida</span>
+                                </div>
+                                
+                                {/* Tab name */}
+                                <div className="flex items-center gap-2 text-xs">
+                                    <span className="text-gray-500 font-bold">Pestaña (tab):</span>
+                                    <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-mono font-bold text-[11px] border border-emerald-500/20">INVENTARIO</span>
+                                </div>
+
+                                {/* Required columns */}
+                                <div className="flex flex-col gap-1.5">
+                                    <span className="text-[9px] font-bold uppercase tracking-widest text-red-400/80">Columnas obligatorias</span>
+                                    <div className="flex gap-2">
+                                        <span className="bg-red-500/10 text-red-400 px-2.5 py-1 rounded-lg font-mono font-bold text-[11px] border border-red-500/15">UPC</span>
+                                        <span className="text-gray-600 self-center text-[10px]">o</span>
+                                        <span className="bg-red-500/10 text-red-400 px-2.5 py-1 rounded-lg font-mono font-bold text-[11px] border border-red-500/15">BARCODE</span>
+                                        <span className="bg-red-500/10 text-red-400 px-2.5 py-1 rounded-lg font-mono font-bold text-[11px] border border-red-500/15">NOMBRE</span>
+                                    </div>
+                                </div>
+
+                                {/* Optional columns */}
+                                <div className="flex flex-col gap-1.5">
+                                    <span className="text-[9px] font-bold uppercase tracking-widest text-gray-500">Columnas opcionales</span>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {['SKU', 'STOCK', 'PRECIO', 'COSTO', 'COSTO TOTAL', 'MARGEN', 'CATEGORIA', 'IMAGEN', 'DIAS'].map(col => (
+                                            <span key={col} className="bg-white/3 text-gray-500 px-2 py-0.5 rounded font-mono text-[10px] border border-dark-border">{col}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* URL Input */}
                             <div className="flex flex-col gap-2">
                                 <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">URL del Spreadsheet</label>
