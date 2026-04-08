@@ -1016,6 +1016,8 @@ export default function InventoryScannerApp() {
     const exportToExcel = (recordsToExport: InventoryRecord[], loteName: string, sessionProvider: string = "", showEmptySessionPrompt: boolean = true) => {
         if (recordsToExport.length === 0) return alert("No hay registros para exportar.");
 
+        const exportMode = recordsToExport.length > 0 ? recordsToExport[0].Moneda : currency;
+
         const dataToExport = recordsToExport.map(r => {
             // Conversión de Fecha de YYYY-MM-DD HH:MM:SS a DD/MM/YYYY
             let fechaFormatted = r.FechaHora;
@@ -1029,18 +1031,26 @@ export default function InventoryScannerApp() {
                 // Keep original if parsing fails
             }
 
-            return {
+            const row: any = {
                 "FECHA": fechaFormatted,
                 "SERIALES": r.Serial || '',
                 "UPC": r.UPC,
                 "SKU": r.SKU,
                 "NOMBRE": r.Nombre,
-                "COSTO USD": r.Moneda === 'USD' ? r.CostoUnitario : (r.CostoUnitario / r.TasaCambio).toFixed(2),
-                "CAMBIO": r.TasaCambio,
-                "COSTO COP": r.CostoTotalCOP,
-                "PROVEEDOR": sessionProvider || r.Proveedor,
-                "IMAGEN": r.Imagen || ''
+                "COSTO USD": r.CostoUnitario,
             };
+
+            if (exportMode === 'COP') {
+                row["CAMBIO"] = r.TasaCambio;
+                row["COSTO TOTAL COP"] = r.CostoTotalCOP;
+            } else {
+                row["COSTO TOTAL USD"] = r.CostoUnitario * r.Cantidad;
+            }
+
+            row["PROVEEDOR"] = sessionProvider || r.Proveedor;
+            row["IMAGEN"] = r.Imagen || '';
+            
+            return row;
         }).sort((a, b) => {
             // Ordenar alfabéticamente por Nombre del Producto
             if (a.NOMBRE < b.NOMBRE) return -1;
@@ -1052,25 +1062,28 @@ export default function InventoryScannerApp() {
 
         const worksheet = XLSX.utils.json_to_sheet(dataToExport);
 
-        const colWidths = [
-            { wch: 15 }, // FECHA
-            { wch: 25 }, // SERIALES
-            { wch: 20 }, // UPC
-            { wch: 15 }, // SKU
-            { wch: 45 }, // NOMBRE
-            { wch: 15 }, // COSTO USD
-            { wch: 10 }, // CAMBIO
-            { wch: 15 }, // COSTO COP
-            { wch: 25 }, // PROVEEDOR
-            { wch: 60 }, // IMAGEN
-        ];
+        const headerKeys = dataToExport.length > 0 ? Object.keys(dataToExport[0]) : [];
+        const colWidths = headerKeys.map(k => {
+            if (k === 'FECHA') return { wch: 15 };
+            if (k === 'SERIALES') return { wch: 25 };
+            if (k === 'UPC') return { wch: 20 };
+            if (k === 'SKU') return { wch: 15 };
+            if (k === 'NOMBRE') return { wch: 45 };
+            if (k === 'COSTO USD') return { wch: 15 };
+            if (k === 'CAMBIO') return { wch: 10 };
+            if (k === 'COSTO TOTAL COP') return { wch: 20 };
+            if (k === 'COSTO TOTAL USD') return { wch: 20 };
+            if (k === 'PROVEEDOR') return { wch: 25 };
+            if (k === 'IMAGEN') return { wch: 60 };
+            return { wch: 15 };
+        });
         worksheet['!cols'] = colWidths;
 
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Ingresos");
 
         // === HOJA 2: RESUMEN (agrupado por producto) ===
-        const summaryMap: Record<string, { SKU: string; NOMBRE: string; UNIDADES: number; COSTO: number; CAMBIO: number; }> = {};
+        const summaryMap: Record<string, { SKU: string; NOMBRE: string; UNIDADES: number; COSTO: number; CAMBIO: number; COSTO_TOTAL_COP: number }> = {};
 
         recordsToExport.forEach(r => {
             const key = r.UPC;
@@ -1079,11 +1092,16 @@ export default function InventoryScannerApp() {
                     SKU: r.SKU || 'N/A',
                     NOMBRE: r.Nombre || 'N/A',
                     UNIDADES: 0,
-                    COSTO: r.CostoUnitario || 0,
-                    CAMBIO: r.TasaCambio || 0,
+                    COSTO: 0,
+                    CAMBIO: 1,
+                    COSTO_TOTAL_COP: 0
                 };
             }
             summaryMap[key].UNIDADES += r.Cantidad;
+            
+            if (exportMode === 'COP') {
+                summaryMap[key].COSTO_TOTAL_COP += r.CostoTotalCOP;
+            }
             // Usar el costo más reciente (último escaneado)
             if (r.CostoUnitario > 0) {
                 summaryMap[key].COSTO = r.CostoUnitario;
@@ -1098,41 +1116,60 @@ export default function InventoryScannerApp() {
         const summaryData = Object.values(summaryMap)
             .sort((a, b) => a.NOMBRE.localeCompare(b.NOMBRE))
             .map(item => {
-                const totalUSD = item.CAMBIO > 0 ? (item.UNIDADES * item.COSTO) : (item.CAMBIO === 1 ? 0 : (item.UNIDADES * item.COSTO));
-                return {
+                const totalUSD = item.UNIDADES * item.COSTO;
+                
+                const row: any = {
                     "FECHA": summaryFecha,
                     "SKU": item.SKU,
                     "NOMBRE": item.NOMBRE,
                     "UNIDADES": item.UNIDADES,
-                    "COSTO": item.COSTO,
-                    "CAMBIO": item.CAMBIO,
-                    "USD": Math.round(item.UNIDADES * item.COSTO * 100) / 100,
+                    "COSTO USD": item.COSTO,
                 };
+                
+                if (exportMode === 'COP') {
+                    row["CAMBIO"] = item.CAMBIO;
+                    row["TOTAL USD"] = Math.round(totalUSD * 100) / 100;
+                    row["TOTAL COP"] = item.COSTO_TOTAL_COP;
+                } else {
+                    row["TOTAL USD"] = Math.round(totalUSD * 100) / 100;
+                }
+                return row;
             });
 
         // Fila de totales
         const totalUnidades = summaryData.reduce((acc, r) => acc + r.UNIDADES, 0);
-        const totalUSD = summaryData.reduce((acc, r) => acc + r.USD, 0);
-        summaryData.push({
+        const totalUSD = summaryData.reduce((acc, r) => acc + (r["TOTAL USD"] || 0), 0);
+        const totalCOP = summaryData.reduce((acc, r) => acc + (r["TOTAL COP"] || 0), 0);
+        
+        const totalRow: any = {
             "FECHA": "",
             "SKU": "",
             "NOMBRE": "TOTAL",
             "UNIDADES": totalUnidades,
-            "COSTO": 0,
-            "CAMBIO": 0,
-            "USD": Math.round(totalUSD * 100) / 100,
-        });
+            "COSTO USD": "",
+        };
+        if (exportMode === 'COP') {
+            totalRow["CAMBIO"] = "";
+            totalRow["TOTAL USD"] = Math.round(totalUSD * 100) / 100;
+            totalRow["TOTAL COP"] = totalCOP;
+        } else {
+            totalRow["TOTAL USD"] = Math.round(totalUSD * 100) / 100;
+        }
+        summaryData.push(totalRow);
 
         const summarySheet = XLSX.utils.json_to_sheet(summaryData);
-        summarySheet['!cols'] = [
-            { wch: 15 },  // FECHA
-            { wch: 20 },  // SKU
-            { wch: 45 },  // NOMBRE
-            { wch: 12 },  // UNIDADES
-            { wch: 12 },  // COSTO
-            { wch: 10 },  // CAMBIO
-            { wch: 15 },  // USD
-        ];
+        const summaryKeys = summaryData.length > 0 ? Object.keys(summaryData[0]) : [];
+        summarySheet['!cols'] = summaryKeys.map(k => {
+            if (k === 'FECHA') return { wch: 15 };
+            if (k === 'SKU') return { wch: 20 };
+            if (k === 'NOMBRE') return { wch: 45 };
+            if (k === 'UNIDADES') return { wch: 12 };
+            if (k === 'COSTO USD') return { wch: 12 };
+            if (k === 'CAMBIO') return { wch: 10 };
+            if (k === 'TOTAL USD') return { wch: 15 };
+            if (k === 'TOTAL COP') return { wch: 18 };
+            return { wch: 15 };
+        });
         XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen");
 
         const safeLoteName = loteName.replace(/[^a-z0-9]/gi, '_').toLowerCase();

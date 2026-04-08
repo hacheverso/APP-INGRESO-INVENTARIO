@@ -27,41 +27,53 @@ export async function GET() {
             if (sheets.success) sheetsData = sheets.data;
         } catch (_) { /* ignore sheets failures */ }
 
-        const formattedSessions = sessions.map(s => ({
-            id: s.id,
-            fecha: s.date,
-            lote: s.batchName || "",
-            proveedor: s.provider || "",
-            totalRecords: s.records.length,
-            totalUnidades: s.totalItems,
-            costoTotalCOP: s.totalCop,
-            monedaBase: 'COP',
-            records: s.records.map(r => {
-                const serialesArray = JSON.parse(r.seriales || '[]');
-                const isUSD = r.costoUsd > 0;
-                // Image: use stored image, or fall back to sheets data
-                const storedImagen = r.imagen || '';
-                const sheetsImagen = sheetsData[r.upc]?.IMAGEN || '';
-                return {
-                    ID: r.id,
-                    FechaHora: r.fecha,
-                    Lote: s.batchName || "",
-                    Proveedor: s.provider || "",
-                    Tipo: r.tipo || (serialesArray.length > 0 && serialesArray[0] ? 'SERIAL' : 'MASIVO'),
-                    UPC: r.upc,
-                    Nombre: r.nombre,
-                    SKU: r.sku,
-                    Serial: serialesArray.length > 0 ? serialesArray[0] : "",
-                    Cantidad: r.cantidad,
-                    Nota: "",
-                    Moneda: isUSD ? 'USD' : 'COP',
-                    CostoUnitario: isUSD ? r.costoUsd : (r.cantidad > 0 ? r.costoCop / r.cantidad : 0),
-                    TasaCambio: r.trm || 1,
-                    CostoTotalCOP: r.costoCop,
-                    Imagen: storedImagen || sheetsImagen
-                };
-            })
-        }));
+        const formattedSessions = sessions.map(s => {
+            const sessionMoneda = s.records.some(r => r.trm > 1) ? 'COP' : 'USD';
+            
+            return {
+                id: s.id,
+                fecha: s.date,
+                lote: s.batchName || "",
+                proveedor: s.provider || "",
+                totalRecords: s.records.length,
+                totalUnidades: s.totalItems,
+                costoTotalCOP: s.totalCop,
+                monedaBase: sessionMoneda,
+                records: s.records.map(r => {
+                    const serialesArray = JSON.parse(r.seriales || '[]');
+                    const isCOP = r.trm > 1;
+                    // Image: use stored image, or fall back to sheets data
+                    const storedImagen = r.imagen || '';
+                    const sheetsImagen = sheetsData[r.upc]?.IMAGEN || '';
+                    
+                    // En registros nuevos, r.costoUsd tiene el valor en dólares puro.
+                    // En registros corruptos viejos donde costoUsd guardó 0, lo derivamos dividiendo el costoCop / (trm * cantidad)
+                    let costoUnitarioUsd = r.costoUsd;
+                    if (costoUnitarioUsd === 0 && r.costoCop > 0 && r.trm > 0 && r.cantidad > 0 && isCOP) {
+                        costoUnitarioUsd = r.costoCop / (r.trm * r.cantidad);
+                    }
+
+                    return {
+                        ID: r.id,
+                        FechaHora: r.fecha,
+                        Lote: s.batchName || "",
+                        Proveedor: s.provider || "",
+                        Tipo: r.tipo || (serialesArray.length > 0 && serialesArray[0] ? 'SERIAL' : 'MASIVO'),
+                        UPC: r.upc,
+                        Nombre: r.nombre,
+                        SKU: r.sku,
+                        Serial: serialesArray.length > 0 ? serialesArray[0] : "",
+                        Cantidad: r.cantidad,
+                        Nota: "",
+                        Moneda: isCOP ? 'COP' : 'USD',
+                        CostoUnitario: costoUnitarioUsd,
+                        TasaCambio: r.trm || 1,
+                        CostoTotalCOP: r.costoCop,
+                        Imagen: storedImagen || sheetsImagen
+                    };
+                })
+            };
+        });
 
         return NextResponse.json({ success: true, data: formattedSessions });
     } catch (error: any) {
@@ -115,7 +127,7 @@ export async function POST(req: Request) {
                         sku: r.SKU || '',
                         nombre: r.Nombre || 'Producto Sin Nombre',
                         imagen: r.Imagen || '',
-                        costoUsd: r.Moneda === 'USD' ? (r.CostoUnitario || 0) : 0,
+                        costoUsd: r.CostoUnitario || 0,
                         costoCop: r.CostoTotalCOP || 0,
                         trm: r.TasaCambio || 1
                     }))
