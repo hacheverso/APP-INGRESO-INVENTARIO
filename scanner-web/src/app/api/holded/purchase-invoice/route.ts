@@ -6,24 +6,40 @@ import {
     createHoldedProduct,
     findOrCreateSupplier,
     getHoldedProductsByBarcode,
-    getNextPurchaseDocNumber,
     createPurchaseInvoice,
     HoldedInvoiceItem,
 } from '@/lib/holded';
 
 export const dynamic = 'force-dynamic';
 
-// La numeración de facturas usa el día calendario de Colombia
+// La numeración usa el día calendario de Colombia
 const BOGOTA_TZ = 'America/Bogota';
+const LOTE_PATTERN = /^\d{8}-\d{1,4}$/;
 
-function getBogotaDay(): { dayKey: string; dayStartTs: number; dayEndTs: number } {
-    const now = new Date();
-    const isoDay = new Intl.DateTimeFormat('en-CA', {
+function getBogotaDayKey(): string {
+    return new Intl.DateTimeFormat('en-CA', {
         timeZone: BOGOTA_TZ, year: 'numeric', month: '2-digit', day: '2-digit'
-    }).format(now); // "YYYY-MM-DD"
-    const dayKey = isoDay.replace(/-/g, '');
-    const dayStartTs = Math.floor(new Date(`${isoDay}T00:00:00-05:00`).getTime() / 1000);
-    return { dayKey, dayStartTs, dayEndTs: dayStartTs + 86400 };
+    }).format(new Date()).replace(/-/g, ''); // "YYYYMMDD"
+}
+
+/**
+ * Siguiente consecutivo del día calculado desde NUESTRAS sesiones (títulos de
+ * lote y facturas ya emitidas), sin depender del listado de Holded.
+ */
+async function nextDocNumberFromDb(userId: string, dayKey: string): Promise<string> {
+    const sessions = await prisma.historySession.findMany({
+        where: { userId },
+        select: { batchName: true, holdedInvoiceNum: true }
+    });
+    const pattern = new RegExp(`^${dayKey}-(\\d{1,4})$`);
+    let maxSeq = 0;
+    for (const s of sessions) {
+        for (const candidate of [s.batchName, s.holdedInvoiceNum]) {
+            const m = (candidate || '').trim().match(pattern);
+            if (m) maxSeq = Math.max(maxSeq, parseInt(m[1], 10));
+        }
+    }
+    return `${dayKey}-${String(maxSeq + 1).padStart(3, '0')}`;
 }
 
 export async function POST(req: Request) {
@@ -117,9 +133,18 @@ export async function POST(req: Request) {
             });
         }
 
-        // 3. Número de factura: fecha de hoy (Bogotá) + consecutivo del día
-        const { dayKey, dayStartTs, dayEndTs } = getBogotaDay();
-        const docNumber = await getNextPurchaseDocNumber(dayKey, dayStartTs, dayEndTs);
+        // 3. Número de factura = título del lote en el historial (ej. 20260710-001),
+        // para que factura e ingreso compartan el mismo número. Si el lote no tiene
+        // ese formato (sesiones antiguas) o es una re-facturación forzada, se toma
+        // el siguiente consecutivo del día según nuestra base de datos.
+        const dayKey = getBogotaDayKey();
+        const loteName = (session.batchName || '').trim();
+        let docNumber: string;
+        if (LOTE_PATTERN.test(loteName) && !(force && session.holdedInvoiceNum)) {
+            docNumber = loteName;
+        } else {
+            docNumber = await nextDocNumberFromDb(authSession.userId, dayKey);
+        }
 
         // 4. Crear la factura de compra
         const totalCop = items.reduce((acc, i) => acc + i.unitPriceCop * i.units, 0);

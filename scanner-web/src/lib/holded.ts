@@ -146,24 +146,6 @@ export async function getHoldedProductsByBarcode(): Promise<Map<string, string>>
     return map;
 }
 
-/**
- * Calcula el siguiente número de factura del día: YYYYMMDD-001, YYYYMMDD-002...
- * consultando las facturas de compra ya creadas ese día en Holded.
- */
-export async function getNextPurchaseDocNumber(dayKey: string, dayStartTs: number, dayEndTs: number): Promise<string> {
-    const apiKey = process.env.HOLDED_API_KEY;
-    if (!apiKey) throw new Error('HOLDED_API_KEY no está configurada en el servidor');
-
-    const docs = await holdedGetList(apiKey, `/documents/purchase?starttmp=${dayStartTs}&endtmp=${dayEndTs}`);
-    let maxSeq = 0;
-    const pattern = new RegExp(`^${dayKey}-(\\d{1,4})$`);
-    for (const doc of docs) {
-        const match = String(doc.docNumber || doc.invoiceNum || '').match(pattern);
-        if (match) maxSeq = Math.max(maxSeq, parseInt(match[1], 10));
-    }
-    return `${dayKey}-${String(maxSeq + 1).padStart(3, '0')}`;
-}
-
 export interface HoldedInvoiceItem {
     name: string;
     sku?: string;
