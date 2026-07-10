@@ -43,37 +43,37 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen bg-[#08090B] flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="min-h-screen bg-page flex items-center justify-center p-4 relative overflow-hidden">
             {/* Background Effects */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/5 rounded-full blur-[120px]"></div>
-                <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-blue-500/3 rounded-full blur-[80px]"></div>
-                <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-blue-600/4 rounded-full blur-[80px]"></div>
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-green/15 rounded-full blur-[120px]"></div>
+                <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-brand-blue/10 rounded-full blur-[80px]"></div>
+                <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-brand-green/10 rounded-full blur-[80px]"></div>
             </div>
 
             <div className="w-full max-w-md relative z-10">
                 {/* Logo / Brand */}
                 <div className="text-center mb-10">
-                    <div className="inline-flex items-center justify-center w-20 h-20 mb-6 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(37,99,235,0.3)] border border-blue-500/20">
+                    <div className="inline-flex items-center justify-center w-20 h-20 mb-6 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(91,202,45,0.35)] border border-brand-green/30">
                         <img src="/logo.png" alt="INGRESADOS" className="w-full h-full object-cover" />
                     </div>
-                    <h1 className="text-3xl font-black tracking-[0.3em] text-white uppercase drop-shadow-lg">INGRESADOS</h1>
-                    <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-blue-400/60 mt-2">INVENTORY & TRACKING SYSTEM</p>
+                    <h1 className="font-display text-3xl tracking-[0.3em] text-ink uppercase">INGRESADOS</h1>
+                    <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-muted mt-2">INVENTORY & TRACKING SYSTEM</p>
                 </div>
 
                 {/* Login Card */}
-                <div className="bg-[#0F1014] border border-[#1A1B20] rounded-3xl shadow-2xl shadow-black/50 overflow-hidden">
+                <div className="bg-card border border-line rounded-3xl shadow-[0_18px_50px_rgba(23,28,20,0.10)] overflow-hidden">
                     {/* Tab Toggle */}
-                    <div className="flex border-b border-[#1A1B20]">
+                    <div className="flex border-b border-line">
                         <button
                             onClick={() => { setIsLogin(true); setError(''); }}
-                            className={`flex-1 flex items-center justify-center gap-2 py-4 font-bold text-xs uppercase tracking-widest transition-all ${isLogin ? 'text-blue-400 bg-blue-500/5 border-b-2 border-blue-500' : 'text-gray-600 hover:text-gray-400'}`}
+                            className={`flex-1 flex items-center justify-center gap-2 py-4 font-bold text-xs uppercase tracking-widest transition-all ${isLogin ? 'text-brand-blue bg-brand-blue/5 border-b-2 border-brand-blue' : 'text-faint hover:text-muted'}`}
                         >
                             <LogIn size={16} /> Iniciar Sesión
                         </button>
                         <button
                             onClick={() => { setIsLogin(false); setError(''); }}
-                            className={`flex-1 flex items-center justify-center gap-2 py-4 font-bold text-xs uppercase tracking-widest transition-all ${!isLogin ? 'text-blue-400 bg-blue-500/5 border-b-2 border-blue-500' : 'text-gray-600 hover:text-gray-400'}`}
+                            className={`flex-1 flex items-center justify-center gap-2 py-4 font-bold text-xs uppercase tracking-widest transition-all ${!isLogin ? 'text-brand-blue bg-brand-blue/5 border-b-2 border-brand-blue' : 'text-faint hover:text-muted'}`}
                         >
                             <UserPlus size={16} /> Crear Cuenta
                         </button>
@@ -83,7 +83,7 @@ export default function LoginPage() {
                     <form onSubmit={handleSubmit} className="p-8 flex flex-col gap-5">
                         {/* Error Display */}
                         {error && (
-                            <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-red-400 text-sm font-bold animate-in slide-in-from-top-2 duration-200">
+                            <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-red-600 text-sm font-bold animate-in slide-in-from-top-2 duration-200">
                                 <AlertTriangle size={18} className="flex-shrink-0" />
                                 {error}
                             </div>
@@ -92,12 +92,12 @@ export default function LoginPage() {
                         {/* Name (Register only) */}
                         {!isLogin && (
                             <div>
-                                <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">Nombre (opcional)</label>
+                                <label className="block text-[10px] font-bold uppercase tracking-widest text-muted mb-2">Nombre (opcional)</label>
                                 <input
                                     type="text"
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
-                                    className="w-full bg-[#0A0A0B] border border-[#1A1B20] rounded-xl px-4 py-3.5 outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all text-white font-medium placeholder-gray-600"
+                                    className="w-full bg-field border border-line rounded-xl px-4 py-3.5 outline-none focus:ring-2 focus:ring-brand-blue/40 focus:border-brand-blue/50 focus:bg-white transition-all text-ink font-medium placeholder-faint"
                                     placeholder="Tu nombre..."
                                 />
                             </div>
@@ -105,27 +105,27 @@ export default function LoginPage() {
 
                         {/* Email */}
                         <div>
-                            <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">Correo Electrónico</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-widest text-muted mb-2">Correo Electrónico</label>
                             <input
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
                                 autoFocus
-                                className="w-full bg-[#0A0A0B] border border-[#1A1B20] rounded-xl px-4 py-3.5 outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all text-white font-medium placeholder-gray-600"
+                                className="w-full bg-field border border-line rounded-xl px-4 py-3.5 outline-none focus:ring-2 focus:ring-brand-blue/40 focus:border-brand-blue/50 focus:bg-white transition-all text-ink font-medium placeholder-faint"
                                 placeholder="correo@ejemplo.com"
                             />
                         </div>
 
                         {/* Password */}
                         <div>
-                            <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">Contraseña</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-widest text-muted mb-2">Contraseña</label>
                             <input
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
-                                className="w-full bg-[#0A0A0B] border border-[#1A1B20] rounded-xl px-4 py-3.5 outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all text-white font-medium placeholder-gray-600"
+                                className="w-full bg-field border border-line rounded-xl px-4 py-3.5 outline-none focus:ring-2 focus:ring-brand-blue/40 focus:border-brand-blue/50 focus:bg-white transition-all text-ink font-medium placeholder-faint"
                                 placeholder="••••••••••"
                             />
                         </div>
@@ -134,7 +134,7 @@ export default function LoginPage() {
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 disabled:cursor-not-allowed text-white font-black uppercase tracking-widest text-sm py-4 rounded-xl transition-all shadow-[0_0_30px_rgba(37,99,235,0.3)] hover:shadow-[0_0_40px_rgba(37,99,235,0.5)] active:scale-[0.98] flex items-center justify-center gap-3 mt-2"
+                            className="w-full bg-brand-blue hover:bg-brand-blue-hover disabled:bg-brand-blue/50 disabled:cursor-not-allowed text-white font-black uppercase tracking-widest text-sm py-4 rounded-xl transition-all shadow-[0_6px_20px_rgba(58,82,218,0.35)] hover:shadow-[0_8px_26px_rgba(58,82,218,0.45)] active:scale-[0.98] flex items-center justify-center gap-3 mt-2"
                         >
                             {isLoading ? (
                                 <Loader2 size={20} className="animate-spin" />
@@ -150,9 +150,9 @@ export default function LoginPage() {
 
                 {/* Footer */}
                 <div className="text-center mt-8 opacity-40">
-                    <p className="text-[9px] font-black text-gray-500 tracking-[0.3em] uppercase mb-1">INGRESADOS V1.0</p>
-                    <p className="text-[10px] font-bold text-gray-400 tracking-widest flex items-center gap-1.5 uppercase justify-center">
-                        Creado por <span className="text-white bg-black px-2 py-0.5 rounded border border-gray-800">Hacheverso</span>
+                    <p className="text-[9px] font-black text-muted tracking-[0.3em] uppercase mb-1">INGRESADOS V1.0</p>
+                    <p className="text-[10px] font-bold text-muted tracking-widest flex items-center gap-1.5 uppercase justify-center">
+                        Creado por <span className="text-white bg-black px-2 py-0.5 rounded border border-line">Hacheverso</span>
                     </p>
                 </div>
             </div>

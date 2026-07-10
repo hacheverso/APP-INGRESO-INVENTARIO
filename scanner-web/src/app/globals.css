@@ -1,20 +1,53 @@
 @import "tailwindcss";
 
-@theme {
-  --color-brand-blue: #1F4E78;
-  --color-brand-blue-hover: #153450;
-  --color-brand-green: #2E7D32;
-  --color-brand-green-hover: #1b5e20;
+/* ============================================================
+   INGRESADOS — Tema claro HACHEVERSO
+   Tokens derivados del HACHEVERSO Design System:
+   verde ácido #5BCA2D (núcleo) + azul real #3A52DA (secundario)
+   sobre superficies blancas con tinta casi negra.
+   ============================================================ */
 
-  --color-dark-bg: #0A0A0B;
-  --color-dark-card: #121214;
-  --color-dark-border: #2E3038;
-  --color-dark-input: #0A0A0B;
+@theme {
+  /* ---- Marca ---- */
+  --color-brand-green: #5BCA2D;        /* verde HACHEVERSO (pastillas, texto negro encima) */
+  --color-brand-green-bright: #72E03E; /* hover: sube brillo */
+  --color-brand-green-deep: #4AAB23;   /* pressed */
+  --color-brand-green-ink: #2F6E18;    /* verde legible como TEXTO sobre blanco (7:1) */
+  --color-brand-blue: #3A52DA;         /* azul real secundario */
+  --color-brand-blue-hover: #2A3FB4;
+  --color-brand-blue-bright: #5067E6;
+
+  /* ---- Tinta (texto) ---- */
+  --color-ink: #0C0E0B;                /* texto principal */
+  --color-ink-soft: #3C4038;           /* texto secundario */
+  --color-muted: #5E635C;              /* texto atenuado (aún 7:1 sobre blanco) */
+  --color-faint: #8C928A;              /* decorativo / placeholders */
+
+  /* ---- Superficies ---- */
+  --color-page: #F3F5F1;               /* fondo de página (gris cálido verdoso) */
+  --color-card: #FFFFFF;               /* tarjetas */
+  --color-field: #F5F7F3;              /* inputs / insets */
+  --color-line: #E1E5DD;               /* hairline */
+  --color-line-strong: #C9CFC4;        /* borde marcado */
+
+  /* Aliases legados (nombres usados por el código existente) */
+  --color-dark-bg: #F3F5F1;
+  --color-dark-card: #FFFFFF;
+  --color-dark-border: #E1E5DD;
+  --color-dark-input: #F5F7F3;
+
+}
+
+/* Tipografía de marca (referencias a variables de next/font → requiere inline) */
+@theme inline {
+  --font-display: var(--font-britanica), "Arial Black", system-ui, sans-serif;
+  --font-sans: var(--font-poppins), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 body {
-  @apply bg-dark-bg text-gray-100 antialiased overflow-hidden selection:bg-brand-blue/30;
-  background-color: var(--color-dark-bg);
+  @apply bg-page text-ink antialiased overflow-hidden selection:bg-brand-green/30 font-sans;
+  background-color: var(--color-page);
 }
 
 ::-webkit-scrollbar {
@@ -27,11 +60,11 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-[#2E3038] rounded-full;
+  @apply bg-[#C9CFC4] rounded-full;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-[#424450];
+  @apply bg-[#8C928A];
 }
 
 /* Ocultar flechas (spinners) de los inputs de tipo number globalmente */

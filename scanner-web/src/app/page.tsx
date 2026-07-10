@@ -144,11 +144,22 @@ export default function InventoryScannerApp() {
     const noteRef = useRef<HTMLInputElement>(null);
     const modalNameRef = useRef<HTMLInputElement>(null);
 
+    // Título de lote estilo factura: fecha + consecutivo del día (ej. 20260710-001)
+    const nextLoteNumber = (sessions: HistorySession[]) => {
+        const now = new Date();
+        const dayKey = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+        let maxSeq = 0;
+        sessions.forEach(s => {
+            const m = (s.lote || '').match(new RegExp(`^${dayKey}-(\\d{1,4})$`));
+            if (m) maxSeq = Math.max(maxSeq, parseInt(m[1], 10));
+        });
+        return `${dayKey}-${String(maxSeq + 1).padStart(3, '0')}`;
+    };
+
     // Inicialización (Client-side)
     useEffect(() => {
         setIsClient(true);
-        const today = new Date().toISOString().split('T')[0];
-        setBatchName(`Ingreso ${today}`);
+        setBatchName(nextLoteNumber([]));
 
         // Auth: fetch current user
         fetch('/api/auth/me').then(r => r.json()).then(data => {
@@ -208,6 +219,8 @@ export default function InventoryScannerApp() {
                 const sessData = await sessRes.json();
                 if (sessData.success && sessData.data) {
                     setSavedSessions(sessData.data);
+                    // Ajustar el consecutivo del lote según las sesiones ya guardadas hoy
+                    setBatchName(prev => (prev && !/^\d{8}-\d{3,4}$/.test(prev)) ? prev : nextLoteNumber(sessData.data));
                 }
             } catch (err) {
                 console.error("Error fetching remote data:", err);
@@ -1256,7 +1269,7 @@ export default function InventoryScannerApp() {
         const newSessionPayload = {
             id: newSessionId,
             date: new Date().toLocaleString('es-CO'),
-            batchName: batchName || `Ingreso ${new Date().toISOString().split('T')[0]}`,
+            batchName: batchName || nextLoteNumber(savedSessions),
             proveedor: proveedor,
             totalItems: currentTotalUnidades,
             totalCop: currentCostoTotalCOP,
@@ -1290,6 +1303,7 @@ export default function InventoryScannerApp() {
                 setSavedSessions(prev => [formattedNewSession, ...prev.filter(s => s.id !== newSessionId)]);
                 setRecords([]); // Vaciamos la sesión activa localmente solo si guardó con éxito en la nube
                 setEditingSessionId(null); // Reset editing state
+                setBatchName(nextLoteNumber([formattedNewSession, ...savedSessions])); // Siguiente consecutivo del día para el próximo lote
                 localStorage.removeItem('scanner_backup'); // Limpiamos backup local
                 setView('HISTORY');
                 showToast(editingSessionId ? "Sesión actualizada en Neon DB" : "Sesión Guardada permanentemente en Neon DB", "success");
@@ -1416,8 +1430,8 @@ export default function InventoryScannerApp() {
     }, [records, productDB]);
 
 
-    const inputClass = "w-full bg-gray-50/50 dark:bg-dark-input border border-gray-200 dark:border-dark-border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-blue focus:bg-white dark:focus:bg-dark-bg transition-all text-slate-900 dark:text-gray-100 placeholder-gray-400 font-medium";
-    const labelClass = "block text-xs font-bold uppercase tracking-wider mb-2 text-gray-500 dark:text-gray-400";
+    const inputClass = "w-full bg-field border border-line rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-blue focus:bg-white transition-all text-ink placeholder-faint font-medium";
+    const labelClass = "block text-xs font-bold uppercase tracking-wider mb-2 text-muted";
 
     // Contadores Globales Financieros
     const totalUnits = records.reduce((acc, current) => acc + current.Cantidad, 0);
@@ -1426,24 +1440,24 @@ export default function InventoryScannerApp() {
     if (!isClient) return null;
 
     return (
-        <div className="min-h-[100vh] flex flex-col font-sans bg-dark-bg text-gray-100 transition-colors duration-300">
+        <div className="min-h-[100vh] flex flex-col font-sans bg-page text-ink transition-colors duration-300">
             {/* Oculto: Input para archivos CSV */}
             <input type="file" accept=".csv" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
 
             {/* Confirmation Modal */}
             {deleteConfirm.id && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-200" onClick={() => setDeleteConfirm({ id: null, type: 'record' })}>
-                    <div className="bg-[#0F1014] border border-dark-border rounded-3xl w-[400px] overflow-hidden shadow-2xl shadow-red-500/10" onClick={e => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-ink/50 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-200" onClick={() => setDeleteConfirm({ id: null, type: 'record' })}>
+                    <div className="bg-card border border-line rounded-3xl w-[400px] overflow-hidden shadow-2xl shadow-red-500/10" onClick={e => e.stopPropagation()}>
                         <div className="p-6 text-center">
                             <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4 border border-red-500/20">
                                 <AlertTriangle className="text-red-500" size={32} />
                             </div>
-                            <h3 className="text-xl font-black text-white uppercase tracking-wider mb-2">¿Confirmar Acción?</h3>
-                            <p className="text-gray-400 font-bold mb-8">
+                            <h3 className="text-xl font-black text-ink uppercase tracking-wider mb-2">¿Confirmar Acción?</h3>
+                            <p className="text-muted font-bold mb-8">
                                 {deleteConfirm.type === 'record' ? '¿Estás completamente seguro de borrar esta entrada?' : '¿Deseas vaciar toda la sesión actual y todos sus registros no guardados?'}
                             </p>
                             <div className="flex gap-4">
-                                <button onClick={() => setDeleteConfirm({ id: null, type: 'record' })} className="flex-1 py-3 px-4 rounded-xl font-bold bg-dark-input hover:bg-white/5 text-gray-400 transition-colors">
+                                <button onClick={() => setDeleteConfirm({ id: null, type: 'record' })} className="flex-1 py-3 px-4 rounded-xl font-bold bg-field hover:bg-line text-ink-soft transition-colors">
                                     CANCELAR
                                 </button>
                                 <button onClick={confirmDelete} className="flex-1 py-3 px-4 rounded-xl font-bold bg-red-600 hover:bg-red-500 text-white shadow-[0_0_15px_rgba(220,38,38,0.3)] transition-all">
@@ -1458,7 +1472,7 @@ export default function InventoryScannerApp() {
             {/* Toasts */}
             <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-[100] flex flex-col items-center gap-3 pointer-events-none">
                 {toasts.map((toast) => (
-                    <div key={toast.id} className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-white font-semibold tracking-wide transition-all transform animate-in zoom-in duration-200 ${toast.type === 'success' ? 'bg-[#2E7D32]/95 backdrop-blur-md border border-[#2E7D32]' : toast.type === 'error' ? 'bg-[#C62828]/95 backdrop-blur-md border border-[#C62828]' : 'bg-[#F9A825]/95 backdrop-blur-md border border-[#F9A825]'}`}>
+                    <div key={toast.id} className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-white font-semibold tracking-wide transition-all transform animate-in zoom-in duration-200 ${toast.type === 'success' ? 'bg-[#2E7D32]/95 backdrop-blur-md border border-[#2E7D32]' : toast.type === 'error' ? 'bg-[#C62828]/95 backdrop-blur-md border border-[#C62828]' : 'bg-[#F9A825]/95 backdrop-blur-md border border-[#F9A825] !text-ink'}`}>
                         {toast.type === 'success' ? <CheckCircle size={22} className="opacity-90" /> : toast.type === 'error' ? <AlertTriangle size={22} className="opacity-90" /> : <Database size={22} className="opacity-90" />}
                         {toast.message}
                     </div>
@@ -1467,15 +1481,15 @@ export default function InventoryScannerApp() {
 
             {/* Modal: Agregar Producto Nuevo */}
             {showNewProductModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-                        <div className="px-6 py-4 border-b border-gray-100 dark:border-dark-border flex justify-between items-center bg-brand-blue text-white">
-                            <div className="flex items-center gap-2"><AlertTriangle size={20} className="text-yellow-400" /><h3 className="font-bold text-lg tracking-wide">UPC No Registrado</h3></div>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/40 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white border border-line rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="px-6 py-4 border-b border-line flex justify-between items-center bg-brand-blue text-white">
+                            <div className="flex items-center gap-2"><AlertTriangle size={20} className="text-amber-300" /><h3 className="font-bold text-lg tracking-wide">UPC No Registrado</h3></div>
                             <button onClick={() => { setShowNewProductModal(false); upcRef.current?.select(); }} className="text-white/60 hover:text-white transition-colors"><X size={24} /></button>
                         </div>
                         <div className="p-6 flex flex-col gap-4">
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Ingresa los datos para que el sistema aprenda este código.</p>
-                            <div><label className={labelClass}>UPC</label><input type="text" value={newProductForm.UPC} disabled className={`${inputClass} bg-gray-100 dark:bg-dark-bg cursor-not-allowed`} /></div>
+                            <p className="text-sm text-muted mb-2">Ingresa los datos para que el sistema aprenda este código.</p>
+                            <div><label className={labelClass}>UPC</label><input type="text" value={newProductForm.UPC} disabled className={`${inputClass} bg-field cursor-not-allowed`} /></div>
 
                             <div className="relative">
                                 <label className={labelClass}>Nombre del Producto *</label>
@@ -1501,7 +1515,7 @@ export default function InventoryScannerApp() {
                                         <option key={idx} value={name} />
                                     ))}
                                 </datalist>
-                                <span className="absolute right-4 top-[38px] text-[9px] text-gray-500 font-bold uppercase tracking-widest hidden md:block pointer-events-none">Auto SKU ✓</span>
+                                <span className="absolute right-4 top-[38px] text-[9px] text-muted font-bold uppercase tracking-widest hidden md:block pointer-events-none">Auto SKU ✓</span>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1510,7 +1524,7 @@ export default function InventoryScannerApp() {
                                     <label className={labelClass}>URL de Imagen</label>
                                     <div className="flex gap-2 relative items-center">
                                         {newProductForm.IMAGEN && (
-                                            <div className="w-12 h-12 flex-shrink-0 bg-white rounded-lg border border-dark-border overflow-hidden flex items-center justify-center p-1 shadow-inner">
+                                            <div className="w-12 h-12 flex-shrink-0 bg-white rounded-lg border border-line overflow-hidden flex items-center justify-center p-1 shadow-inner">
                                                 <img src={newProductForm.IMAGEN} alt="Preview" className="max-w-full max-h-full object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                                             </div>
                                         )}
@@ -1547,7 +1561,7 @@ export default function InventoryScannerApp() {
                                                     showToast("Error al leer portapapeles", "error");
                                                 }
                                             }}
-                                            className="bg-dark-input border border-dark-border hover:bg-white/10 text-gray-400 px-3 py-3 flex items-center justify-center rounded-xl transition-colors tooltip-trigger shrink-0"
+                                            className="bg-field border border-line hover:bg-ink/10 text-muted px-3 py-3 flex items-center justify-center rounded-xl transition-colors tooltip-trigger shrink-0"
                                             title="Pegar URL directamente"
                                         >
                                             <FileDown size={18} />
@@ -1556,67 +1570,66 @@ export default function InventoryScannerApp() {
                                 </div>
                             </div>
                         </div>
-                        <div className="p-4 bg-gray-50 dark:bg-dark-input flex justify-end gap-3 border-t dark:border-dark-border"><button onClick={() => { setShowNewProductModal(false); upcRef.current?.select(); }} className="px-5 py-2 font-bold text-gray-600 dark:text-gray-400">Cancelar</button><button onClick={handleSaveNewProduct} className="flex gap-2 px-6 py-2 bg-brand-green text-white font-bold rounded-lg"><PlusCircle size={18} /> Guardar</button></div>
+                        <div className="p-4 bg-field flex justify-end gap-3 border-t"><button onClick={() => { setShowNewProductModal(false); upcRef.current?.select(); }} className="px-5 py-2 font-bold text-faint">Cancelar</button><button onClick={handleSaveNewProduct} className="flex gap-2 px-6 py-2 bg-brand-green hover:bg-brand-green-bright text-ink font-black rounded-lg"><PlusCircle size={18} /> Guardar</button></div>
                     </div>
                 </div>
             )}
 
             {/* Modal: Configurar URL de Google Sheets */}
             {showSheetsUrlModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowSheetsUrlModal(false)}>
-                    <div className="bg-[#0F1014] border border-dark-border rounded-3xl w-[520px] overflow-hidden shadow-2xl shadow-emerald-500/5 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/45 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowSheetsUrlModal(false)}>
+                    <div className="bg-card border border-line rounded-3xl w-[520px] overflow-hidden shadow-2xl shadow-emerald-500/5 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                         {/* Header */}
-                        <div className="px-6 py-4 border-b border-dark-border flex items-center gap-3 bg-gradient-to-r from-emerald-900/30 to-transparent">
-                            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                                <Link2 size={20} className="text-emerald-400" />
+                        <div className="px-6 py-4 border-b border-line flex items-center gap-3 bg-gradient-to-r from-brand-green/15 to-transparent">
+                            <div className="w-10 h-10 rounded-xl bg-brand-green/10 border border-brand-green/30 flex items-center justify-center">
+                                <Link2 size={20} className="text-brand-green-ink" />
                             </div>
                             <div className="flex-1">
-                                <h3 className="font-black text-white text-sm uppercase tracking-wider">Base de Datos</h3>
-                                <p className="text-[10px] text-gray-500 font-bold tracking-widest uppercase">Google Sheets — Configuración Personal</p>
+                                <h3 className="font-black text-ink text-sm uppercase tracking-wider">Base de Datos</h3>
+                                <p className="text-[10px] text-muted font-bold tracking-widest uppercase">Google Sheets — Configuración Personal</p>
                             </div>
-                            <button onClick={() => setShowSheetsUrlModal(false)} className="text-gray-600 hover:text-white transition-colors">
-                                <X size={20} />
+                            <button onClick={() => setShowSheetsUrlModal(false)} className="text-faint hover:text-ink transition-colors">                                <X size={20} />
                             </button>
                         </div>
 
                         {/* Body */}
                         <div className="p-6 flex flex-col gap-5">
-                            <p className="text-gray-400 text-xs font-medium leading-relaxed">
+                            <p className="text-muted text-xs font-medium leading-relaxed">
                                 Pega el link de tu Google Sheets que contiene el inventario. 
-                                El sheet debe ser <span className="text-emerald-400 font-bold">público</span> o compartido con acceso de lectura.
+                                El sheet debe ser <span className="text-brand-green-ink font-bold">público</span> o compartido con acceso de lectura.
                                 Cada usuario puede tener su propia base de datos independiente.
                             </p>
 
                             {/* Column Requirements */}
-                            <div className="bg-dark-input/60 border border-dark-border rounded-xl p-4 flex flex-col gap-3">
+                            <div className="bg-field/60 border border-line rounded-xl p-4 flex flex-col gap-3">
                                 <div className="flex items-center gap-2 mb-1">
                                     <Database size={14} className="text-brand-blue" />
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Estructura requerida</span>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-muted">Estructura requerida</span>
                                 </div>
                                 
                                 {/* Tab name */}
                                 <div className="flex items-center gap-2 text-xs">
-                                    <span className="text-gray-500 font-bold">Pestaña (tab):</span>
-                                    <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-mono font-bold text-[11px] border border-emerald-500/20">INVENTARIO</span>
+                                    <span className="text-muted font-bold">Pestaña (tab):</span>
+                                    <span className="bg-brand-green/10 text-brand-green-ink px-2 py-0.5 rounded font-mono font-bold text-[11px] border border-brand-green/30">INVENTARIO</span>
                                 </div>
 
                                 {/* Required columns */}
                                 <div className="flex flex-col gap-1.5">
-                                    <span className="text-[9px] font-bold uppercase tracking-widest text-red-400/80">Columnas obligatorias</span>
+                                    <span className="text-[9px] font-bold uppercase tracking-widest text-red-600/80">Columnas obligatorias</span>
                                     <div className="flex gap-2">
-                                        <span className="bg-red-500/10 text-red-400 px-2.5 py-1 rounded-lg font-mono font-bold text-[11px] border border-red-500/15">UPC</span>
-                                        <span className="text-gray-600 self-center text-[10px]">o</span>
-                                        <span className="bg-red-500/10 text-red-400 px-2.5 py-1 rounded-lg font-mono font-bold text-[11px] border border-red-500/15">BARCODE</span>
-                                        <span className="bg-red-500/10 text-red-400 px-2.5 py-1 rounded-lg font-mono font-bold text-[11px] border border-red-500/15">NOMBRE</span>
+                                        <span className="bg-red-500/10 text-red-600 px-2.5 py-1 rounded-lg font-mono font-bold text-[11px] border border-red-500/15">UPC</span>
+                                        <span className="text-faint self-center text-[10px]">o</span>
+                                        <span className="bg-red-500/10 text-red-600 px-2.5 py-1 rounded-lg font-mono font-bold text-[11px] border border-red-500/15">BARCODE</span>
+                                        <span className="bg-red-500/10 text-red-600 px-2.5 py-1 rounded-lg font-mono font-bold text-[11px] border border-red-500/15">NOMBRE</span>
                                     </div>
                                 </div>
 
                                 {/* Optional columns */}
                                 <div className="flex flex-col gap-1.5">
-                                    <span className="text-[9px] font-bold uppercase tracking-widest text-gray-500">Columnas opcionales</span>
+                                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted">Columnas opcionales</span>
                                     <div className="flex flex-wrap gap-1.5">
                                         {['SKU', 'STOCK', 'PRECIO', 'COSTO', 'COSTO TOTAL', 'MARGEN', 'CATEGORIA', 'IMAGEN', 'DIAS'].map(col => (
-                                            <span key={col} className="bg-white/3 text-gray-500 px-2 py-0.5 rounded font-mono text-[10px] border border-dark-border">{col}</span>
+                                            <span key={col} className="bg-ink/5 text-muted px-2 py-0.5 rounded font-mono text-[10px] border border-line">{col}</span>
                                         ))}
                                     </div>
                                 </div>
@@ -1624,7 +1637,7 @@ export default function InventoryScannerApp() {
 
                             {/* URL Input */}
                             <div className="flex flex-col gap-2">
-                                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">URL del Spreadsheet</label>
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-muted">URL del Spreadsheet</label>
                                 <div className="flex gap-2">
                                     <div className="flex-1 relative">
                                         <input
@@ -1637,12 +1650,12 @@ export default function InventoryScannerApp() {
                                                     document.getElementById('sheets-url-save-btn')?.click();
                                                 }
                                             }}
-                                            className="w-full bg-dark-input border border-dark-border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/30 transition-all text-white placeholder-gray-600 font-mono text-xs"
+                                            className="w-full bg-field border border-line rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-green/50 focus:border-brand-green/40 transition-all text-ink placeholder-faint font-mono text-xs"
                                             placeholder="https://docs.google.com/spreadsheets/d/..."
                                             autoFocus
                                         />
                                         {sheetsUrlInput && sheetsUrlInput.includes('docs.google.com/spreadsheets') && (
-                                            <Check size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-400" />
+                                            <Check size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-green-ink" />
                                         )}
                                     </div>
                                     <button
@@ -1657,7 +1670,7 @@ export default function InventoryScannerApp() {
                                                 showToast("No se pudo leer el portapapeles", "error");
                                             }
                                         }}
-                                        className="px-3 py-3 bg-dark-input border border-dark-border hover:bg-white/5 text-gray-500 hover:text-white rounded-xl transition-all"
+                                        className="px-3 py-3 bg-field border border-line hover:bg-ink/5 text-muted hover:text-ink rounded-xl transition-all"
                                         title="Pegar del portapapeles"
                                     >
                                         <ClipboardPaste size={16} />
@@ -1667,13 +1680,13 @@ export default function InventoryScannerApp() {
 
                             {/* Current status */}
                             {sheetsUrl && (
-                                <div className="flex items-center gap-3 bg-emerald-900/10 border border-emerald-500/10 rounded-xl px-4 py-3">
-                                    <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                                <div className="flex items-center gap-3 bg-brand-green/10 border border-brand-green/25 rounded-xl px-4 py-3">
+                                    <div className="w-2 h-2 rounded-full bg-brand-green shrink-0" />
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-[10px] text-emerald-400/80 font-bold uppercase tracking-widest mb-0.5">Conectado actualmente</p>
-                                        <p className="text-xs text-gray-400 font-mono truncate">{sheetsUrl}</p>
+                                        <p className="text-[10px] text-brand-green-ink/80 font-bold uppercase tracking-widest mb-0.5">Conectado actualmente</p>
+                                        <p className="text-xs text-muted font-mono truncate">{sheetsUrl}</p>
                                     </div>
-                                    <a href={sheetsUrl} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-emerald-400 transition-colors shrink-0">
+                                    <a href={sheetsUrl} target="_blank" rel="noopener noreferrer" className="text-faint hover:text-brand-green-ink transition-colors shrink-0">
                                         <ExternalLink size={14} />
                                     </a>
                                 </div>
@@ -1681,7 +1694,7 @@ export default function InventoryScannerApp() {
 
                             {/* Validation hint */}
                             {sheetsUrlInput && !sheetsUrlInput.includes('docs.google.com/spreadsheets') && (
-                                <div className="flex items-center gap-2 text-amber-500 text-[11px] font-bold">
+                                <div className="flex items-center gap-2 text-amber-600 text-[11px] font-bold">
                                     <AlertTriangle size={14} />
                                     <span>La URL debe ser de Google Sheets (docs.google.com/spreadsheets/...)</span>
                                 </div>
@@ -1689,7 +1702,7 @@ export default function InventoryScannerApp() {
                         </div>
 
                         {/* Footer */}
-                        <div className="px-6 py-4 bg-dark-input/50 flex items-center justify-between gap-3 border-t border-dark-border">
+                        <div className="px-6 py-4 bg-field/50 flex items-center justify-between gap-3 border-t border-line">
                             {sheetsUrl && (
                                 <button
                                     onClick={async () => {
@@ -1712,7 +1725,7 @@ export default function InventoryScannerApp() {
                                             showToast('Error al desconectar', 'error');
                                         }
                                     }}
-                                    className="text-[10px] font-bold text-red-500/60 hover:text-red-400 uppercase tracking-widest transition-colors"
+                                    className="text-[10px] font-bold text-red-500/60 hover:text-red-600 uppercase tracking-widest transition-colors"
                                 >
                                     Desconectar
                                 </button>
@@ -1720,7 +1733,7 @@ export default function InventoryScannerApp() {
                             <div className="flex gap-3 ml-auto">
                                 <button 
                                     onClick={() => setShowSheetsUrlModal(false)} 
-                                    className="px-5 py-2.5 font-bold text-gray-500 text-xs hover:text-white transition-colors"
+                                    className="px-5 py-2.5 font-bold text-muted text-xs hover:text-ink transition-colors"
                                 >
                                     Cancelar
                                 </button>
@@ -1766,7 +1779,7 @@ export default function InventoryScannerApp() {
                                             showToast('Error de conexión', 'error');
                                         }
                                     }}
-                                    className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-xs rounded-xl transition-all shadow-lg shadow-emerald-500/10 disabled:shadow-none uppercase tracking-wider"
+                                    className="flex items-center gap-2 px-6 py-2.5 bg-brand-green hover:bg-brand-green-bright disabled:bg-line-strong disabled:text-muted text-ink font-black text-xs rounded-xl transition-all shadow-lg shadow-brand-green/20 disabled:shadow-none uppercase tracking-wider"
                                 >
                                     <Check size={14} />
                                     Guardar y Sincronizar
@@ -1778,19 +1791,19 @@ export default function InventoryScannerApp() {
             )}
 
             {/* Header Global (Dark Terminal UI) */}
-            <header className="bg-dark-bg px-6 lg:px-8 py-5 mt-6 flex flex-wrap items-center justify-between z-10 transition-colors duration-300 gap-4">
+            <header className="bg-page px-6 lg:px-8 py-5 mt-6 flex flex-wrap items-center justify-between z-10 transition-colors duration-300 gap-4">
                 {/* Zona Izquierda: Identidad */}
                 <div className="flex items-center gap-4 cursor-pointer" onClick={() => setView('SCANNER')}>
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl overflow-hidden shadow-[0_0_15px_rgba(37,99,235,0.4)] flex-shrink-0">
+                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl overflow-hidden shadow-[0_0_15px_rgba(91,202,45,0.45)] flex-shrink-0">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src="/logo.png" alt="INGRESADOS Logo" className="w-full h-full object-cover" />
                         </div>
                         <div className="flex flex-col">
-                            <h1 className="text-xl md:text-2xl font-black tracking-[0.3em] text-white uppercase leading-none drop-shadow-md">INGRESADOS</h1>
+                            <h1 className="font-display text-xl md:text-2xl tracking-[0.3em] text-ink uppercase leading-none">INGRESADOS</h1>
                             <div className="flex items-center gap-4 mt-1">
                                 <span className="text-[9px] md:text-[10px] font-bold tracking-[0.2em] uppercase text-brand-blue/80 hidden md:inline-block">INVENTORY & TRACKING</span>
-                                <span className="text-[9px] md:text-[10px] font-bold tracking-[0.2em] uppercase text-gray-500">BODEGA ACTIVA</span>
+                                <span className="text-[9px] md:text-[10px] font-bold tracking-[0.2em] uppercase text-muted">BODEGA ACTIVA</span>
                             </div>
                         </div>
                     </div>
@@ -1799,25 +1812,25 @@ export default function InventoryScannerApp() {
                 {/* Zona Central: Contexto del Lote */}
                 <div className="flex items-center gap-3 flex-wrap lg:flex-nowrap justify-center">
                     {/* Batch Name Pill */}
-                    <div className="flex items-center bg-dark-input px-4 py-2 rounded-xl border border-dark-border">
-                        <input type="text" value={batchName} onChange={(e) => setBatchName(e.target.value)} className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[120px] md:w-[150px]" placeholder="Nombre del Lote..." />
-                        <ChevronDown size={14} className="text-gray-500 ml-1 shrink-0" />
+                    <div className="flex items-center bg-field px-4 py-2 rounded-xl border border-line">
+                        <input type="text" value={batchName} onChange={(e) => setBatchName(e.target.value)} className="bg-transparent text-xs font-bold text-ink-soft outline-none w-[120px] md:w-[150px]" placeholder="Nombre del Lote..." />
+                        <ChevronDown size={14} className="text-muted ml-1 shrink-0" />
                     </div>
 
                     {/* Provider Pill (Auto-feeding Datalist) */}
-                    <div className="flex items-center bg-dark-input px-4 py-2 rounded-xl border border-dark-border">
+                    <div className="flex items-center bg-field px-4 py-2 rounded-xl border border-line">
                         <input
                             list="proveedores-list"
                             type="text"
                             value={proveedor}
                             onChange={(e) => setProveedor(e.target.value)}
-                            className="bg-transparent text-xs font-bold text-gray-300 outline-none w-[130px] md:w-[160px]"
+                            className="bg-transparent text-xs font-bold text-ink-soft outline-none w-[130px] md:w-[160px]"
                             placeholder="Proveedor o Cliente..."
                         />
                         <datalist id="proveedores-list">
                             {listaProveedores.map((prov, i) => <option key={i} value={prov} />)}
                         </datalist>
-                        <ChevronDown size={14} className="text-gray-500 ml-1 shrink-0" />
+                        <ChevronDown size={14} className="text-muted ml-1 shrink-0" />
                     </div>
                 </div>
 
@@ -1859,10 +1872,10 @@ export default function InventoryScannerApp() {
                                 }}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-xs font-bold ${
                                     sheetsConnected 
-                                        ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/40' 
+                                        ? 'bg-brand-green/10 border-brand-green/40 text-brand-green-ink hover:bg-brand-green/20' 
                                         : sheetsUrl 
-                                            ? 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-300'
-                                            : 'bg-dark-input border-dashed border-emerald-500/40 text-emerald-500/70 hover:text-emerald-400 hover:border-emerald-500/60'
+                                            ? 'bg-card border-line text-muted hover:text-ink-soft shadow-sm'
+                                            : 'bg-field border-dashed border-brand-green/50 text-brand-green-ink/70 hover:text-brand-green-ink hover:border-brand-green/60'
                                 } ${sheetsUrl ? 'rounded-r-none border-r-0' : ''}`}
                                 title={sheetsConnected 
                                     ? `Google Sheets conectado — ${sheetsProductCount} productos | Última sync: ${sheetsLastSync ? new Date(sheetsLastSync).toLocaleTimeString('es-CO') : 'N/A'}` 
@@ -1877,7 +1890,7 @@ export default function InventoryScannerApp() {
                                     ) : (
                                         <Link2 size={14} />
                                     )}
-                                    <div className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ${sheetsConnected ? 'bg-emerald-400' : sheetsUrl ? 'bg-gray-600' : 'bg-amber-500 animate-pulse'}`} />
+                                    <div className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ${sheetsConnected ? 'bg-brand-green' : sheetsUrl ? 'bg-faint' : 'bg-amber-500 animate-pulse'}`} />
                                 </div>
                                 <span className="hidden md:inline">
                                     {sheetsSyncing ? 'Sincronizando...' : sheetsConnected ? `${sheetsProductCount}` : sheetsUrl ? 'Sync' : 'Conectar BD'}
@@ -1890,27 +1903,27 @@ export default function InventoryScannerApp() {
                                         setSheetsUrlInput(sheetsUrl || '');
                                         setShowSheetsUrlModal(true);
                                     }}
-                                    className="p-2 rounded-xl rounded-l-none border border-l-0 transition-all text-xs bg-dark-input border-dark-border text-gray-600 hover:text-emerald-400 hover:bg-emerald-900/20"
+                                    className="p-2 rounded-xl rounded-l-none border border-l-0 transition-all text-xs bg-field border-line text-faint hover:text-brand-green-ink hover:bg-brand-green/10"
                                     title="Cambiar URL de Google Sheets"
                                 >
                                     <Pencil size={12} />
                                 </button>
                             )}
                         </div>
-                        <button onClick={migrateLocalToCloud} className="p-2.5 bg-dark-input hover:bg-emerald-900/40 text-emerald-500 rounded-xl border border-dark-border hover:border-emerald-500/50 transition-all font-bold group" title="FORZAR: Migrar Backup Local a la Nube">
+                        <button onClick={migrateLocalToCloud} className="p-2.5 bg-field hover:bg-brand-green/20 text-brand-green-ink rounded-xl border border-line hover:border-brand-green/50 transition-all font-bold group" title="FORZAR: Migrar Backup Local a la Nube">
                             <CloudLightning size={16} className="group-hover:animate-pulse" />
                         </button>
-                        <button onClick={() => fileInputRef.current?.click()} className="p-2.5 bg-dark-input hover:bg-[#151E32] text-gray-400 hover:text-brand-blue rounded-xl border border-dark-border hover:border-brand-blue/30 transition-all font-bold" title="Importar Base de Datos">
+                        <button onClick={() => fileInputRef.current?.click()} className="p-2.5 bg-field hover:bg-brand-blue/10 text-muted hover:text-brand-blue rounded-xl border border-line hover:border-brand-blue/30 transition-all font-bold" title="Importar Base de Datos">
                             <UploadCloud size={16} />
                         </button>
-                        <div className="flex bg-dark-input rounded-xl border border-dark-border overflow-hidden shadow-[0_0_15px_rgba(37,99,235,0.15)]">
-                            <button onClick={() => setView('SCANNER')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all ${view === 'SCANNER' ? 'bg-brand-blue/20 text-brand-blue' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`} title="Volver al Escáner">
+                        <div className="flex bg-field rounded-xl border border-line overflow-hidden shadow-[0_2px_10px_rgba(23,28,20,0.06)]">
+                            <button onClick={() => setView('SCANNER')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all ${view === 'SCANNER' ? 'bg-brand-blue/20 text-brand-blue' : 'text-muted hover:text-ink-soft hover:bg-ink/5'}`} title="Volver al Escáner">
                                 <ScanLine size={14} /> Escáner
                             </button>
-                            <button onClick={() => setView('PRODUCTS')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all border-l border-dark-border ${view === 'PRODUCTS' ? 'bg-brand-blue/20 text-brand-blue' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`} title="Catálogo de Productos">
+                            <button onClick={() => setView('PRODUCTS')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all border-l border-line ${view === 'PRODUCTS' ? 'bg-brand-blue/20 text-brand-blue' : 'text-muted hover:text-ink-soft hover:bg-ink/5'}`} title="Catálogo de Productos">
                                 <PackageCheck size={14} /> Productos
                             </button>
-                            <button onClick={() => setView('HISTORY')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all border-l border-dark-border ${view === 'HISTORY' ? 'bg-brand-blue/20 text-brand-blue' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`} title="Ver Historial">
+                            <button onClick={() => setView('HISTORY')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all border-l border-line ${view === 'HISTORY' ? 'bg-brand-blue/20 text-brand-blue' : 'text-muted hover:text-ink-soft hover:bg-ink/5'}`} title="Ver Historial">
                                 <History size={14} /> Historial
                             </button>
                         </div>
@@ -1918,7 +1931,7 @@ export default function InventoryScannerApp() {
 
                     {/* Controles de Audio */}
                     <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-2 bg-dark-input border border-dark-border rounded-xl px-3 py-1.5">
+                        <div className="flex items-center gap-2 bg-field border border-line rounded-xl px-3 py-1.5">
                             <span className="text-[10px] font-bold text-brand-blue uppercase tracking-widest w-[28px] text-center">{speechRate.toFixed(1)}x</span>
                             <input
                                 type="range"
@@ -1931,7 +1944,7 @@ export default function InventoryScannerApp() {
                                 title="Velocidad de Voz"
                             />
                         </div>
-                        <button onClick={() => setIsAudioEnabled(!isAudioEnabled)} className={`w-[36px] h-[36px] border rounded-xl transition-colors flex items-center justify-center ${isAudioEnabled ? 'bg-[#151E32] border-brand-blue/30 text-brand-blue hover:bg-brand-blue/20' : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-400'}`} title={isAudioEnabled ? "Silenciar Asistente" : "Activar Asistente"}>
+                        <button onClick={() => setIsAudioEnabled(!isAudioEnabled)} className={`w-[36px] h-[36px] border rounded-xl transition-colors flex items-center justify-center ${isAudioEnabled ? 'bg-brand-blue/10 border-brand-blue/30 text-brand-blue hover:bg-brand-blue/20' : 'bg-field border-line text-muted hover:text-muted'}`} title={isAudioEnabled ? "Silenciar Asistente" : "Activar Asistente"}>
                             {isAudioEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
                         </button>
                     </div>
@@ -1939,14 +1952,14 @@ export default function InventoryScannerApp() {
                     {/* Auth: User + Logout */}
                     <div className="flex items-center gap-2">
                         {currentUser && (
-                            <span className="text-[9px] font-bold tracking-widest uppercase text-gray-600 hidden md:inline">{currentUser.email}</span>
+                            <span className="text-[9px] font-bold tracking-widest uppercase text-faint hidden md:inline">{currentUser.email}</span>
                         )}
                         <button
                             onClick={async () => {
                                 await fetch('/api/auth/logout', { method: 'POST' });
                                 window.location.href = '/login';
                             }}
-                            className="w-[36px] h-[36px] border rounded-xl transition-colors flex items-center justify-center bg-dark-input border-dark-border text-gray-500 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10"
+                            className="w-[36px] h-[36px] border rounded-xl transition-colors flex items-center justify-center bg-field border-line text-muted hover:text-red-600 hover:border-red-500/30 hover:bg-red-500/10"
                             title="Cerrar sesión"
                         >
                             <LogOut size={16} />
@@ -1960,45 +1973,45 @@ export default function InventoryScannerApp() {
 
                 {view === 'HISTORY' ? (
                     <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
-                        <div className="flex items-center gap-3 text-white mb-2">
+                        <div className="flex items-center gap-3 text-ink mb-2">
                             <History size={24} className="text-brand-blue" />
-                            <h2 className="text-2xl font-black tracking-widest uppercase">Historial de Ingresos</h2>
+                            <h2 className="font-display text-2xl tracking-widest uppercase">Historial de Ingresos</h2>
                         </div>
 
                         {savedSessions.length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40">
-                                <FolderOpen size={48} className="text-gray-600 mb-4" />
-                                <p className="text-gray-400 font-bold uppercase tracking-widest">No hay sesiones guardadas en el dispositivo</p>
+                                <FolderOpen size={48} className="text-faint mb-4" />
+                                <p className="text-muted font-bold uppercase tracking-widest">No hay sesiones guardadas en el dispositivo</p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                                 {savedSessions.map(session => (
-                                    <div key={session.id} className="bg-dark-card border border-dark-border rounded-2xl p-6 flex flex-col gap-4 hover:border-brand-blue/50 transition-colors group">
+                                    <div key={session.id} className="bg-card border border-line rounded-2xl p-6 flex flex-col gap-4 hover:border-brand-blue/50 transition-colors group">
                                         <div className="flex justify-between items-start">
                                             <div>
-                                                <h3 className="text-white font-bold text-lg mb-1">{session.lote}</h3>
+                                                <h3 className="text-ink font-bold text-lg mb-1">{session.lote}</h3>
                                                 <div className="flex items-center gap-2">
-                                                    <p className="text-gray-500 text-xs font-mono">{session.fecha}</p>
+                                                    <p className="text-muted text-xs font-mono">{session.fecha}</p>
                                                     {session.proveedor && (
-                                                        <span className="text-[9px] bg-dark-input border border-dark-border text-gray-400 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                                                        <span className="text-[9px] bg-field border border-line text-muted px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
                                                             {session.proveedor}
                                                         </span>
                                                     )}
                                                 </div>
                                             </div>
-                                            <div className="bg-[#151E32] text-brand-blue px-3 py-1 rounded-lg text-xs font-bold font-mono">
+                                            <div className="bg-brand-blue/10 text-brand-blue px-3 py-1 rounded-lg text-xs font-bold font-mono">
                                                 {session.totalUnidades} UND
                                             </div>
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-4 my-2">
                                             <div className="flex flex-col">
-                                                <span className="text-gray-600 text-[10px] uppercase font-bold tracking-widest">Escaneos</span>
-                                                <span className="text-gray-300 font-mono">{session.totalRecords}</span>
+                                                <span className="text-faint text-[10px] uppercase font-bold tracking-widest">Escaneos</span>
+                                                <span className="text-ink-soft font-mono">{session.totalRecords}</span>
                                             </div>
                                             <div className="flex flex-col">
-                                                <span className="text-gray-600 text-[10px] uppercase font-bold tracking-widest">Valor ({session.monedaBase})</span>
-                                                <span className="text-emerald-400 font-mono font-bold">
+                                                <span className="text-faint text-[10px] uppercase font-bold tracking-widest">Valor ({session.monedaBase})</span>
+                                                <span className="text-brand-green-ink font-mono font-bold">
                                                     {formatMoney(
                                                         session.monedaBase === 'COP'
                                                             ? session.costoTotalCOP
@@ -2015,7 +2028,7 @@ export default function InventoryScannerApp() {
                                                 disabled={holdedInvoicingId === session.id}
                                                 className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border transition-colors font-bold text-xs uppercase tracking-wider disabled:opacity-60 disabled:cursor-wait ${
                                                     session.holdedInvoiceNum
-                                                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/20'
+                                                        ? 'bg-brand-green/10 border-brand-green/50 text-brand-green-ink hover:bg-brand-green/20'
                                                         : 'bg-brand-blue/10 border-brand-blue/40 text-brand-blue hover:bg-brand-blue hover:text-white'
                                                 }`}
                                                 title={session.holdedInvoiceNum ? `Factura ${session.holdedInvoiceNum} ya creada en Holded (clic para crear otra)` : 'Crear factura de compra en Holded'}
@@ -2030,16 +2043,16 @@ export default function InventoryScannerApp() {
                                             </button>
                                         )}
 
-                                        <div className="flex gap-2 mt-auto pt-4 border-t border-dark-border">
+                                        <div className="flex gap-2 mt-auto pt-4 border-t border-line">
                                             <button
                                                 onClick={() => loadSessionForEditing(session)}
-                                                className="flex-1 flex items-center justify-center gap-2 bg-dark-input hover:bg-white hover:text-black text-gray-400 py-2 rounded-xl transition-colors font-bold text-xs uppercase"
+                                                className="flex-1 flex items-center justify-center gap-2 bg-field hover:bg-ink hover:text-white text-ink-soft py-2 rounded-xl transition-colors font-bold text-xs uppercase"
                                             >
                                                 <ScanLine size={14} /> Reabrir
                                             </button>
                                             <button
                                                 onClick={() => exportToExcel(session.records, session.lote, session.proveedor, false)}
-                                                className="flex-1 flex items-center justify-center gap-2 bg-[#2E7D32]/20 hover:bg-[#2E7D32] text-[#4CAF50] hover:text-white py-2 rounded-xl border border-[#2E7D32]/50 transition-colors font-bold text-xs uppercase"
+                                                className="flex-1 flex items-center justify-center gap-2 bg-brand-green/15 hover:bg-brand-green text-brand-green-ink hover:text-ink py-2 rounded-xl border border-brand-green/40 transition-colors font-bold text-xs uppercase"
                                             >
                                                 <FileDown size={14} /> Excel
                                             </button>
@@ -2050,7 +2063,7 @@ export default function InventoryScannerApp() {
                                                         showToast("Sesión eliminada", "success");
                                                     }
                                                 }}
-                                                className="px-3 flex items-center justify-center bg-dark-input hover:bg-red-900/50 text-gray-500 hover:text-red-400 py-2 rounded-xl border border-transparent transition-colors"
+                                                className="px-3 flex items-center justify-center bg-field hover:bg-red-500/15 text-muted hover:text-red-600 py-2 rounded-xl border border-transparent transition-colors"
                                                 title="Eliminar del dispositivo"
                                             >
                                                 <Trash2 size={14} />
@@ -2063,28 +2076,28 @@ export default function InventoryScannerApp() {
 
                         {/* Espaciado Inferior y Créditos */}
                         <div className="mt-8 pb-12 flex flex-col items-center justify-center opacity-40 hover:opacity-100 transition-opacity flex-shrink-0">
-                            <p className="text-[9px] font-black text-gray-500 tracking-[0.3em] uppercase mb-1">INGRESADOS V1.0</p>
-                            <p className="text-[10px] font-bold text-gray-400 tracking-widest flex items-center gap-1.5 uppercase">
-                                Creado por <span className="text-white bg-black px-2 py-0.5 rounded border border-gray-800">Hacheverso</span>
+                            <p className="text-[9px] font-black text-muted tracking-[0.3em] uppercase mb-1">INGRESADOS V1.0</p>
+                            <p className="text-[10px] font-bold text-muted tracking-widest flex items-center gap-1.5 uppercase">
+                                Creado por <span className="text-white bg-black px-2 py-0.5 rounded border border-line">Hacheverso</span>
                             </p>
                         </div>
                     </div>
                 ) : view === 'PRODUCTS' ? (
                     <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
                         <div className="flex items-center justify-between mb-2 gap-4 flex-wrap">
-                            <div className="flex items-center gap-3 text-white">
+                            <div className="flex items-center gap-3 text-ink">
                                 <PackageCheck size={24} className="text-brand-blue" />
-                                <h2 className="text-2xl font-black tracking-widest uppercase">Catálogo de Productos Maestro</h2>
+                                <h2 className="font-display text-2xl tracking-widest uppercase">Catálogo de Productos Maestro</h2>
                             </div>
                             <div className="flex items-center gap-3 flex-1 justify-end">
                                 <div className="flex-1 max-w-md relative">
-                                    <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                                    <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
                                     <input
                                         type="text"
                                         value={productSearchTerm}
                                         onChange={(e) => setProductSearchTerm(e.target.value)}
                                         placeholder="Buscar por UPC o Nombre..."
-                                        className="w-full bg-dark-input border border-dark-border rounded-xl pl-12 pr-4 py-3 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-medium text-white placeholder-gray-600 shadow-inner"
+                                        className="w-full bg-field border border-line rounded-xl pl-12 pr-4 py-3 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-medium text-ink placeholder-faint shadow-inner"
                                     />
                                 </div>
                                 <button
@@ -2112,7 +2125,7 @@ export default function InventoryScannerApp() {
                                             showToast("Error de conexión al intentar vaciar el catálogo.", "error");
                                         }
                                     }}
-                                    className="flex items-center gap-2 px-5 py-3 bg-dark-input border border-dark-border hover:border-red-500/50 hover:bg-red-500/10 text-gray-500 hover:text-red-400 rounded-xl transition-all text-[10px] font-bold uppercase tracking-widest shrink-0"
+                                    className="flex items-center gap-2 px-5 py-3 bg-field border border-line hover:border-red-500/50 hover:bg-red-500/10 text-muted hover:text-red-600 rounded-xl transition-all text-[10px] font-bold uppercase tracking-widest shrink-0"
                                     title="Eliminar todos los productos del catálogo"
                                 >
                                     <Eraser size={16} /> Vaciar Catálogo
@@ -2122,15 +2135,15 @@ export default function InventoryScannerApp() {
 
                         {Object.keys(productDB).length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40">
-                                <Database size={48} className="text-gray-600 mb-4" />
-                                <p className="text-gray-400 font-bold uppercase tracking-widest">El catálogo está vacío.</p>
+                                <Database size={48} className="text-faint mb-4" />
+                                <p className="text-muted font-bold uppercase tracking-widest">El catálogo está vacío.</p>
                             </div>
                         ) : (
-                            <div className="bg-dark-card border border-dark-border rounded-3xl overflow-hidden shadow-2xl flex-shrink-0">
+                            <div className="bg-card border border-line rounded-3xl overflow-hidden shadow-2xl flex-shrink-0">
                                 <div className="overflow-x-auto min-w-full">
                                     <table className="w-full text-left border-collapse">
                                         <thead>
-                                            <tr className="bg-[#151E32] text-gray-400 uppercase tracking-widest text-[10px] sm:text-xs">
+                                            <tr className="bg-brand-blue/10 text-muted uppercase tracking-widest text-[10px] sm:text-xs">
                                                 <th className="px-6 py-4 font-black w-24 text-center">Foto</th>
                                                 <th className="px-6 py-4 font-black">UPC</th>
                                                 <th className="px-6 py-4 font-black">Nombre</th>
@@ -2138,7 +2151,7 @@ export default function InventoryScannerApp() {
                                                 <th className="px-6 py-4 font-black text-right min-w-[120px]">Acciones</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-dark-border text-gray-300">
+                                        <tbody className="divide-y divide-line text-ink-soft">
                                             {Object.values(productDB)
                                                 .filter(p => {
                                                     if (!p.UPC) return false; // Skip products without barcode
@@ -2147,13 +2160,13 @@ export default function InventoryScannerApp() {
                                                     return p.NOMBRE.toLowerCase().includes(term) || p.UPC.includes(term);
                                                 })
                                                 .map((prod, idx) => (
-                                                <tr key={prod.UPC || `product-${idx}`} className="hover:bg-white/5 transition-colors group">
+                                                <tr key={prod.UPC || `product-${idx}`} className="hover:bg-ink/5 transition-colors group">
                                                     <td className="px-6 py-3">
-                                                        <div className="w-12 h-12 bg-white rounded flex items-center justify-center border border-gray-700 overflow-hidden mx-auto">
+                                                        <div className="w-12 h-12 bg-white rounded flex items-center justify-center border border-line-strong overflow-hidden mx-auto">
                                                             {prod.IMAGEN && (prod.IMAGEN.startsWith('http') || prod.IMAGEN.startsWith('data:')) ? (
                                                                 <img src={prod.IMAGEN} alt={prod.NOMBRE} className="max-w-full max-h-full object-contain" />
                                                             ) : (
-                                                                <ImageIcon size={16} className="text-gray-400" />
+                                                                <ImageIcon size={16} className="text-muted" />
                                                             )}
                                                         </div>
                                                     </td>
@@ -2167,7 +2180,7 @@ export default function InventoryScannerApp() {
                                                                     setNewProductForm({ UPC: prod.UPC, NOMBRE: prod.NOMBRE, SKU: prod.SKU || '', IMAGEN: prod.IMAGEN || '' });
                                                                     setShowNewProductModal(true);
                                                                 }} 
-                                                                className="p-2 bg-dark-bg hover:bg-brand-blue/20 text-gray-400 hover:text-brand-blue rounded-lg transition-colors border border-dark-border shadow-sm"
+                                                                className="p-2 bg-page hover:bg-brand-blue/20 text-muted hover:text-brand-blue rounded-lg transition-colors border border-line shadow-sm"
                                                                 title="Editar Nombre / Foto"
                                                             >
                                                                 <Settings2 size={16} />
@@ -2190,7 +2203,7 @@ export default function InventoryScannerApp() {
                                                                         }
                                                                     }
                                                                 }} 
-                                                                className="p-2 bg-dark-bg hover:bg-red-900/40 text-gray-400 hover:text-red-400 rounded-lg transition-colors border border-dark-border shadow-sm"
+                                                                className="p-2 bg-page hover:bg-red-500/15 text-muted hover:text-red-600 rounded-lg transition-colors border border-line shadow-sm"
                                                                 title="Eliminar de la BD"
                                                             >
                                                                 <Trash2 size={16} />
@@ -2207,9 +2220,9 @@ export default function InventoryScannerApp() {
 
                         {/* Espaciado Inferior y Créditos */}
                         <div className="mt-8 pb-12 flex flex-col items-center justify-center opacity-40 hover:opacity-100 transition-opacity flex-shrink-0">
-                            <p className="text-[9px] font-black text-gray-500 tracking-[0.3em] uppercase mb-1">INGRESADOS V1.0</p>
-                            <p className="text-[10px] font-bold text-gray-400 tracking-widest flex items-center gap-1.5 uppercase">
-                                Creado por <span className="text-white bg-black px-2 py-0.5 rounded border border-gray-800">Hacheverso</span>
+                            <p className="text-[9px] font-black text-muted tracking-[0.3em] uppercase mb-1">INGRESADOS V1.0</p>
+                            <p className="text-[10px] font-bold text-muted tracking-widest flex items-center gap-1.5 uppercase">
+                                Creado por <span className="text-white bg-black px-2 py-0.5 rounded border border-line">Hacheverso</span>
                             </p>
                         </div>
                     </div>
@@ -2221,8 +2234,8 @@ export default function InventoryScannerApp() {
                             {/* Top Split Section: Total (Left) + Currency (Center) + Controls (Right) */}
                             <div className="flex gap-4 min-h-[120px] shrink-0">
                                 {/* Total Ingresado Blue Card */}
-                                <div className="flex-1 min-w-0 bg-blue-600 rounded-3xl p-5 text-white flex flex-col justify-between shadow-[0_0_30px_rgba(37,99,235,0.15)] relative overflow-hidden group">
-                                    <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full transform translate-x-1/3 -translate-y-1/3 group-hover:bg-white/10 transition-colors"></div>
+                                <div className="flex-1 min-w-0 bg-brand-blue rounded-3xl p-5 text-white flex flex-col justify-between shadow-[0_10px_30px_rgba(58,82,218,0.25)] relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-ink/5 rounded-full transform translate-x-1/3 -translate-y-1/3 group-hover:bg-ink/10 transition-colors"></div>
                                     <span className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-70 relative z-10">Total Ingresado</span>
                                     <div className="flex items-baseline gap-2 relative z-10 mt-auto">
                                         <span className="text-6xl font-black leading-none drop-shadow-md">{totalUnits}</span>
@@ -2233,15 +2246,15 @@ export default function InventoryScannerApp() {
                                 {/* CURRENCY SELECTOR — Prominent Card */}
                                 <div className={`w-[180px] rounded-3xl p-4 flex flex-col justify-between border-2 transition-all duration-300 relative overflow-hidden ${
                                     currency === 'USD'
-                                        ? 'bg-gradient-to-br from-[#0d2818] to-[#0a1f13] border-emerald-500/40 shadow-[0_0_25px_rgba(16,185,129,0.1)]'
-                                        : 'bg-gradient-to-br from-[#0c1a3a] to-[#0a1228] border-brand-blue/40 shadow-[0_0_25px_rgba(37,99,235,0.1)]'
+                                        ? 'bg-gradient-to-br from-brand-green/15 to-transparent border-brand-green/40 shadow-[0_0_25px_rgba(91,202,45,0.15)]'
+                                        : 'bg-gradient-to-br from-brand-blue/10 to-transparent border-brand-blue/40 shadow-[0_0_25px_rgba(58,82,218,0.12)]'
                                 }`}>
                                     <div className="flex flex-col gap-1 relative z-10">
-                                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500">Moneda</span>
-                                        <span className={`text-2xl font-black tracking-wider leading-none ${currency === 'USD' ? 'text-emerald-400' : 'text-brand-blue'}`}>
+                                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-muted">Moneda</span>
+                                        <span className={`text-2xl font-black tracking-wider leading-none ${currency === 'USD' ? 'text-brand-green-ink' : 'text-brand-blue'}`}>
                                             {currency}
                                         </span>
-                                        <span className="text-[8px] font-bold uppercase tracking-widest text-gray-600 mt-0.5">
+                                        <span className="text-[8px] font-bold uppercase tracking-widest text-faint mt-0.5">
                                             {currency === 'USD' ? 'Solo dólares' : 'USD → COP'}
                                         </span>
                                     </div>
@@ -2252,8 +2265,8 @@ export default function InventoryScannerApp() {
                                             onClick={() => setCurrency('USD')}
                                             className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
                                                 currency === 'USD'
-                                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.15)]'
-                                                    : 'bg-white/3 text-gray-600 border border-transparent hover:text-gray-400 hover:bg-white/5'
+                                                    ? 'bg-brand-green/15 text-brand-green-ink border border-brand-green/40 shadow-[0_0_10px_rgba(91,202,45,0.2)]'
+                                                    : 'bg-ink/5 text-faint border border-transparent hover:text-muted hover:bg-ink/5'
                                             }`}
                                         >
                                             USD
@@ -2262,8 +2275,8 @@ export default function InventoryScannerApp() {
                                             onClick={() => setCurrency('COP')}
                                             className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
                                                 currency === 'COP'
-                                                    ? 'bg-brand-blue/20 text-blue-400 border border-brand-blue/30 shadow-[0_0_10px_rgba(37,99,235,0.15)]'
-                                                    : 'bg-white/3 text-gray-600 border border-transparent hover:text-gray-400 hover:bg-white/5'
+                                                    ? 'bg-brand-blue/20 text-brand-blue border border-brand-blue/30 shadow-[0_0_10px_rgba(58,82,218,0.15)]'
+                                                    : 'bg-ink/5 text-faint border border-transparent hover:text-muted hover:bg-ink/5'
                                             }`}
                                         >
                                             COP
@@ -2272,7 +2285,7 @@ export default function InventoryScannerApp() {
 
                                     {/* TRM Input — Only visible in COP mode */}
                                     <div className={`transition-all duration-300 overflow-hidden relative z-10 ${currency === 'COP' ? 'max-h-[50px] opacity-100 mt-2' : 'max-h-0 opacity-0 mt-0'}`}>
-                                        <div className="flex items-center gap-1.5 bg-black/30 rounded-lg px-2 py-1.5 border border-brand-blue/20">
+                                        <div className="flex items-center gap-1.5 bg-ink/20 rounded-lg px-2 py-1.5 border border-brand-blue/20">
                                             <span className="text-[8px] font-bold text-brand-blue/60 uppercase tracking-widest">TRM</span>
                                             <input
                                                 type="number"
@@ -2280,7 +2293,7 @@ export default function InventoryScannerApp() {
                                                 onChange={(e) => setExchangeRate(e.target.value)}
                                                 onWheel={(e) => e.currentTarget.blur()}
                                                 onFocus={(e) => e.target.select()}
-                                                className="bg-transparent text-sm font-black text-blue-400 outline-none w-full text-center font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                className="bg-transparent text-sm font-black text-brand-blue outline-none w-full text-center font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                 placeholder="4000"
                                             />
                                         </div>
@@ -2294,52 +2307,52 @@ export default function InventoryScannerApp() {
 
                                 {/* Controls Vertical Stack */}
                                 <div className="w-[180px] flex flex-col gap-3">
-                                    <button onClick={() => { setMode('UPC_SERIAL'); upcRef.current?.focus(); }} className={`flex-1 flex gap-3 items-center justify-center rounded-2xl border transition-all duration-300 ${mode === 'UPC_SERIAL' ? 'bg-[#151E32] border-brand-blue/30 text-brand-blue shadow-[inset_0_0_20px_rgba(31,78,120,0.2)]' : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-300'}`}>
+                                    <button onClick={() => { setMode('UPC_SERIAL'); upcRef.current?.focus(); }} className={`flex-1 flex gap-3 items-center justify-center rounded-2xl border transition-all duration-300 ${mode === 'UPC_SERIAL' ? 'bg-brand-blue/10 border-brand-blue/30 text-brand-blue shadow-[inset_0_0_20px_rgba(58,82,218,0.10)]' : 'bg-card border-line text-muted hover:text-ink-soft shadow-sm'}`}>
                                         <ScanLine size={18} className={mode === 'UPC_SERIAL' ? 'opacity-100' : 'opacity-40'} />
                                         <div className="flex flex-col items-start leading-none text-left">
-                                            <span className={`text-xs font-black uppercase tracking-widest ${mode === 'UPC_SERIAL' ? 'text-brand-blue' : 'text-gray-400'}`}>Serializado</span>
-                                            <span className="text-[8px] uppercase font-bold tracking-widest opacity-60 mt-1 text-gray-500">UNO A UNO (F1)</span>
+                                            <span className={`text-xs font-black uppercase tracking-widest ${mode === 'UPC_SERIAL' ? 'text-brand-blue' : 'text-muted'}`}>Serializado</span>
+                                            <span className="text-[8px] uppercase font-bold tracking-widest opacity-60 mt-1 text-muted">UNO A UNO (F1)</span>
                                         </div>
                                     </button>
-                                    <button onClick={() => { setMode('MASSIVE'); upcRef.current?.focus(); }} className={`flex-1 flex gap-3 items-center justify-center rounded-2xl border transition-all duration-300 ${mode === 'MASSIVE' ? 'bg-[#151E32] border-brand-blue/30 text-brand-blue shadow-[inset_0_0_20px_rgba(31,78,120,0.2)]' : 'bg-dark-input border-dark-border text-gray-500 hover:text-gray-300'}`}>
+                                    <button onClick={() => { setMode('MASSIVE'); upcRef.current?.focus(); }} className={`flex-1 flex gap-3 items-center justify-center rounded-2xl border transition-all duration-300 ${mode === 'MASSIVE' ? 'bg-brand-blue/10 border-brand-blue/30 text-brand-blue shadow-[inset_0_0_20px_rgba(58,82,218,0.10)]' : 'bg-card border-line text-muted hover:text-ink-soft shadow-sm'}`}>
                                         <Layers size={18} className={mode === 'MASSIVE' ? 'opacity-100' : 'opacity-40'} />
                                         <div className="flex flex-col items-start leading-none text-left">
-                                            <span className={`text-xs font-black uppercase tracking-widest ${mode === 'MASSIVE' ? 'text-brand-blue' : 'text-gray-400'}`}>Masivo</span>
-                                            <span className="text-[8px] uppercase font-bold tracking-widest opacity-60 mt-1 text-gray-500">CANTIDAD (F2)</span>
+                                            <span className={`text-xs font-black uppercase tracking-widest ${mode === 'MASSIVE' ? 'text-brand-blue' : 'text-muted'}`}>Masivo</span>
+                                            <span className="text-[8px] uppercase font-bold tracking-widest opacity-60 mt-1 text-muted">CANTIDAD (F2)</span>
                                         </div>
                                     </button>
                                 </div>
                             </div>
 
                             {/* Big Dark Canvas Box (Ghost Input) */}
-                            <div className={`flex-1 bg-dark-input rounded-3xl border border-dark-border p-6 flex flex-col items-center justify-center relative min-h-[300px] transition-all duration-300 group overflow-hidden ${isFlashing && scanStatus === 'success' ? 'ring-2 ring-emerald-500/50 bg-emerald-900/10' : ''} ${isFlashing && scanStatus === 'error' ? 'ring-2 ring-red-500/50 bg-red-900/10' : ''}`}>
+                            <div className={`flex-1 bg-card rounded-3xl border border-line shadow-[0_10px_30px_rgba(23,28,20,0.05)] p-6 flex flex-col items-center justify-center relative min-h-[300px] transition-all duration-300 group overflow-hidden ${isFlashing && scanStatus === 'success' ? 'ring-2 ring-brand-green/60 bg-brand-green/10' : ''} ${isFlashing && scanStatus === 'error' ? 'ring-2 ring-red-500/50 bg-red-500/10' : ''}`}>
 
                                 {/* Tarjeta de Producto Reconocido (Oculta el input visualmente cuando hay match) */}
                                 {matchedProduct ? (
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-6 z-30 bg-dark-input rounded-3xl overflow-y-auto custom-scrollbar">
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-6 z-30 bg-card rounded-3xl overflow-y-auto custom-scrollbar">
                                         <div className="flex flex-col items-center gap-4 text-center mt-auto mb-auto animate-in slide-in-from-bottom-4 duration-300 w-full">
                                             {matchedProduct.IMAGEN && (matchedProduct.IMAGEN.startsWith('http') || matchedProduct.IMAGEN.startsWith('data:')) && (
-                                                <div className="w-[140px] h-[140px] rounded-2xl overflow-hidden bg-white/5 border border-white/10 shadow-2xl p-4 flex items-center justify-center shrink-0">
+                                                <div className="w-[140px] h-[140px] rounded-2xl overflow-hidden bg-ink/5 border border-ink/10 shadow-2xl p-4 flex items-center justify-center shrink-0">
                                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                                     <img src={matchedProduct.IMAGEN} alt={matchedProduct.NOMBRE} className="max-w-full max-h-full object-contain" />
                                                 </div>
                                             )}
-                                            <h2 className="text-2xl md:text-3xl font-black text-white leading-tight uppercase drop-shadow-xl">{matchedProduct.NOMBRE}</h2>
+                                            <h2 className="text-2xl md:text-3xl font-black text-ink leading-tight uppercase">{matchedProduct.NOMBRE}</h2>
                                             <span className="text-brand-blue font-mono text-lg md:text-xl tracking-widest">{matchedProduct.UPC}</span>
                                             {matchedProduct.SKU && (
-                                                <span className="text-gray-500 font-mono text-xs tracking-wider">SKU: {matchedProduct.SKU}</span>
+                                                <span className="text-muted font-mono text-xs tracking-wider">SKU: {matchedProduct.SKU}</span>
                                             )}
                                         </div>
                                     </div>
                                 ) : unknownUpc ? (
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 z-30 bg-dark-input rounded-3xl animate-in slide-in-from-bottom-4 duration-300">
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 z-30 bg-card rounded-3xl animate-in slide-in-from-bottom-4 duration-300">
                                         <div className="flex flex-col items-center gap-5 text-center">
                                             <div className="w-20 h-20 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center animate-pulse">
-                                                <AlertTriangle size={40} className="text-amber-500" />
+                                                <AlertTriangle size={40} className="text-amber-600" />
                                             </div>
-                                            <h2 className="text-xl md:text-2xl font-black text-amber-400 uppercase tracking-wider">Producto No Encontrado</h2>
-                                            <span className="text-white font-mono text-2xl md:text-3xl tracking-widest font-black">{unknownUpc}</span>
-                                            <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">¿Deseas crear este producto?</p>
+                                            <h2 className="text-xl md:text-2xl font-black text-amber-600 uppercase tracking-wider">Producto No Encontrado</h2>
+                                            <span className="text-ink font-mono text-2xl md:text-3xl tracking-widest font-black">{unknownUpc}</span>
+                                            <p className="text-muted text-xs font-bold uppercase tracking-widest">¿Deseas crear este producto?</p>
                                             <div className="flex gap-3 pointer-events-auto">
                                                 <button
                                                     onClick={() => {
@@ -2348,7 +2361,7 @@ export default function InventoryScannerApp() {
                                                         setUnknownUpc(null);
                                                         setTimeout(() => modalNameRef.current?.focus(), 100);
                                                     }}
-                                                    className="px-8 py-3 bg-amber-500 hover:bg-amber-400 text-black font-black text-sm uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/40 hover:scale-105"
+                                                    className="px-8 py-3 bg-amber-500 hover:bg-amber-400 text-ink font-black text-sm uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/40 hover:scale-105"
                                                 >
                                                     <PlusCircle size={16} className="inline mr-2" />
                                                     Crear Producto
@@ -2359,7 +2372,7 @@ export default function InventoryScannerApp() {
                                                         setUpc("");
                                                         upcRef.current?.focus();
                                                     }}
-                                                    className="px-6 py-3 bg-dark-input hover:bg-gray-800 text-gray-400 hover:text-white font-black text-sm uppercase tracking-widest rounded-xl border border-dark-border hover:border-gray-600 transition-all"
+                                                    className="px-6 py-3 bg-field hover:bg-ink text-ink-soft hover:text-white font-black text-sm uppercase tracking-widest rounded-xl border border-line hover:border-line-strong transition-all"
                                                 >
                                                     Ignorar
                                                 </button>
@@ -2379,19 +2392,19 @@ export default function InventoryScannerApp() {
                                         onChange={(e) => { setUpc(e.target.value); setMatchedProduct(null); setUnknownUpc(null); }}
                                         onKeyDown={(e) => handleKeyDown(e, 'upc')}
 
-                                        className="w-full bg-transparent outline-none text-center text-4xl md:text-5xl font-black tracking-widest uppercase text-gray-200 placeholder-[#1d1f27]"
+                                        className="w-full bg-transparent outline-none text-center text-4xl md:text-5xl font-black tracking-widest uppercase text-ink placeholder-faint"
                                         placeholder="ESPERANDO UPC..."
                                         autoFocus
                                     />
                                 </div>
 
                                 {/* Bottom Label Absoluto */}
-                                <span className="absolute bottom-8 text-gray-600 font-bold tracking-[0.2em] uppercase text-[10px]">Paso 1: Identificar Producto</span>
+                                <span className="absolute bottom-8 text-faint font-bold tracking-[0.2em] uppercase text-[10px]">Paso 1: Identificar Producto</span>
 
                                 {/* Candado Fijo Esquina Derecha */}
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setKeepUpc(!keepUpc); }}
-                                    className={`absolute top-6 right-6 p-3 rounded-xl transition-all flex items-center justify-center z-30 ${keepUpc ? 'bg-brand-blue text-white shadow-lg' : 'bg-black/20 text-gray-500 hover:text-gray-300'}`}
+                                    className={`absolute top-6 right-6 p-3 rounded-xl transition-all flex items-center justify-center z-30 ${keepUpc ? 'bg-brand-blue text-white shadow-lg' : 'bg-ink/10 text-muted hover:text-ink-soft'}`}
                                     title="Fijar este UPC para múltiples escaneos continuos"
                                 >
                                     {keepUpc ? <Lock size={16} /> : <Unlock size={16} />}
@@ -2401,7 +2414,7 @@ export default function InventoryScannerApp() {
                                 {upc && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setUpc(""); setMatchedProduct(null); setKeepUpc(false); upcRef.current?.focus(); }}
-                                        className="absolute top-6 left-6 p-3 rounded-xl transition-all flex items-center justify-center z-30 bg-black/20 text-gray-500 hover:text-red-400 hover:bg-black/40"
+                                        className="absolute top-6 left-6 p-3 rounded-xl transition-all flex items-center justify-center z-30 bg-ink/10 text-muted hover:text-red-600 hover:bg-ink/30"
                                         title="Borrar UPC (ESC)"
                                     >
                                         <X size={16} />
@@ -2413,13 +2426,13 @@ export default function InventoryScannerApp() {
                             <div className="flex gap-4 shrink-0 pb-6 lg:pb-0">
                                 {mode === 'UPC_SERIAL' && (
                                     <div className="flex-1">
-                                        <input ref={serialRef} type="text" value={serial} onChange={(e) => setSerial(e.target.value)} onKeyDown={(e) => handleKeyDown(e, 'serial')} className="w-full bg-dark-input border border-dark-border rounded-2xl px-5 py-4 outline-none focus:ring-1 focus:ring-brand-blue focus:border-brand-blue transition-all font-mono text-xl tracking-widest text-brand-blue placeholder-gray-600 text-center uppercase" placeholder="ESCANEAR SERIAL AQUÍ" />
+                                        <input ref={serialRef} type="text" value={serial} onChange={(e) => setSerial(e.target.value)} onKeyDown={(e) => handleKeyDown(e, 'serial')} className="w-full bg-card border border-line-strong rounded-2xl px-5 py-4 outline-none focus:ring-1 focus:ring-brand-blue focus:border-brand-blue transition-all font-mono text-xl tracking-widest text-brand-blue placeholder-faint text-center uppercase" placeholder="ESCANEAR SERIAL AQUÍ" />
                                     </div>
                                 )}
                                 {mode === 'MASSIVE' && (
                                     <div className="flex-1 flex gap-4">
-                                        <input ref={qtyRef} type="number" value={qty} onChange={(e) => setQty(e.target.value)} onWheel={(e) => e.currentTarget.blur()} onKeyDown={(e) => handleKeyDown(e, 'qty')} min="1" className="w-[120px] bg-dark-input border border-dark-border rounded-2xl px-5 py-4 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-sans text-2xl font-black text-center text-white placeholder-gray-600" placeholder="1" />
-                                        <button onClick={addRecord} className="flex-1 bg-brand-blue hover:bg-blue-600 text-white font-bold py-4 px-4 rounded-2xl transition-all text-sm uppercase tracking-widest shadow-lg shadow-brand-blue/20 flex items-center justify-center gap-2">
+                                        <input ref={qtyRef} type="number" value={qty} onChange={(e) => setQty(e.target.value)} onWheel={(e) => e.currentTarget.blur()} onKeyDown={(e) => handleKeyDown(e, 'qty')} min="1" className="w-[120px] bg-field border border-line rounded-2xl px-5 py-4 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-sans text-2xl font-black text-center text-ink placeholder-faint" placeholder="1" />
+                                        <button onClick={addRecord} className="flex-1 bg-brand-blue hover:bg-brand-blue-hover text-white font-bold py-4 px-4 rounded-2xl transition-all text-sm uppercase tracking-widest shadow-lg shadow-brand-blue/20 flex items-center justify-center gap-2">
                                             <PackageCheck size={20} /> Ingresar
                                         </button>
                                     </div>
@@ -2429,20 +2442,20 @@ export default function InventoryScannerApp() {
                         </div>
 
                         {/* Right Panel: Historial Reciente (Dark Terminal Grid) */}
-                        <div className="flex-1 flex flex-col bg-[#0F1014] border border-dark-border rounded-3xl relative overflow-hidden h-[600px] lg:h-full lg:max-h-[calc(100vh-120px)] min-h-0 shrink-0">
+                        <div className="flex-1 flex flex-col bg-card border border-line shadow-[0_10px_30px_rgba(23,28,20,0.05)] rounded-3xl relative overflow-hidden h-[600px] lg:h-full lg:max-h-[calc(100vh-120px)] min-h-0 shrink-0">
 
                             {/* Header (Top) */}
-                            <div className="flex justify-between items-center px-8 py-6 border-b border-dark-border bg-[#0A0A0B]/50 shrink-0">
-                                <h2 className="text-white font-black tracking-[0.2em] text-sm flex items-center gap-3">
-                                    <History size={18} className="text-gray-500" /> HISTORIAL RECIENTE
+                            <div className="flex justify-between items-center px-8 py-6 border-b border-line bg-card shrink-0">
+                                <h2 className="text-ink font-black tracking-[0.2em] text-sm flex items-center gap-3">
+                                    <History size={18} className="text-muted" /> HISTORIAL RECIENTE
                                 </h2>
                                 <div className="flex items-center gap-2">
                                     {records.length > 0 && (
-                                        <button onClick={saveCurrentSessionToHistory} className="flex items-center gap-2 text-white hover:text-white transition-all px-5 py-2 bg-brand-blue hover:bg-blue-500 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:shadow-[0_0_30px_rgba(37,99,235,0.5)] active:scale-95">
+                                        <button onClick={saveCurrentSessionToHistory} className="flex items-center gap-2 text-white transition-all px-5 py-2 bg-brand-blue hover:bg-brand-blue-hover rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-[0_4px_14px_rgba(58,82,218,0.35)] hover:shadow-[0_6px_20px_rgba(58,82,218,0.45)] active:scale-95">
                                             <Save size={14} /> Guardar
                                         </button>
                                     )}
-                                    <button onClick={() => setDeleteConfirm({ id: 'all', type: 'session' })} className="flex items-center gap-2 text-gray-500 hover:text-red-400 transition-all px-4 py-2 bg-dark-input rounded-xl hover:bg-red-500/10 border border-dark-border hover:border-red-500/30 text-[10px] font-bold uppercase tracking-widest">
+                                    <button onClick={() => setDeleteConfirm({ id: 'all', type: 'session' })} className="flex items-center gap-2 text-muted hover:text-red-600 transition-all px-4 py-2 bg-field rounded-xl hover:bg-red-500/10 border border-line hover:border-red-500/30 text-[10px] font-bold uppercase tracking-widest">
                                         <Trash2 size={14} /> Vaciar Todo
                                     </button>
                                 </div>
@@ -2452,32 +2465,32 @@ export default function InventoryScannerApp() {
                             <div className="flex-1 overflow-y-auto min-h-0 p-4 md:p-6 space-y-4 pb-8 custom-scrollbar">
                                 {groupedRecords.length === 0 ? (
                                     <div className="h-full flex flex-col items-center justify-center opacity-40">
-                                        <Box size={48} className="text-gray-600 mb-4" />
-                                        <span className="font-bold tracking-widest uppercase text-sm text-gray-500">Sesión Vacía</span>
+                                        <Box size={48} className="text-faint mb-4" />
+                                        <span className="font-bold tracking-widest uppercase text-sm text-muted">Sesión Vacía</span>
                                     </div>
                                 ) : (
                                     groupedRecords.map((group, groupIndex) => (
-                                        <div key={`${group.UPC}-${groupIndex}`} className={`bg-transparent border rounded-2xl p-5 md:p-6 flex flex-col relative overflow-hidden transition-all duration-300 ${groupIndex === 0 ? 'border-brand-blue/30 bg-brand-blue/5' : 'border-[#18181A] opacity-70 hover:opacity-100'}`}>
+                                        <div key={`${group.UPC}-${groupIndex}`} className={`bg-transparent border rounded-2xl p-5 md:p-6 flex flex-col relative overflow-hidden transition-all duration-300 ${groupIndex === 0 ? 'border-brand-blue/30 bg-brand-blue/5' : 'border-line opacity-70 hover:opacity-100'}`}>
 
                                             {/* Borde luminiscente izquierdo (Solo en el producto activo/más reciente) */}
                                             {groupIndex === 0 && (
-                                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-blue shadow-[0_0_15px_rgba(37,99,235,1)]"></div>
+                                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-blue shadow-[0_0_10px_rgba(58,82,218,0.7)]"></div>
                                             )}
 
                                             {/* Titulo y Badge con Imagen */}
                                             <div className="flex gap-4 items-start mb-5 pl-2 relative">
                                                 {/* Contenedor de Imagen */}
-                                                <div className="w-[90px] h-[90px] flex-shrink-0 bg-white rounded-xl border-2 border-[#18181A] overflow-hidden flex items-center justify-center p-2 relative z-10 shadow-lg">
+                                                <div className="w-[90px] h-[90px] flex-shrink-0 bg-white rounded-xl border-2 border-line overflow-hidden flex items-center justify-center p-2 relative z-10 shadow-lg">
                                                     {group.Records[0]?.Imagen ? (
                                                         <img src={group.Records[0].Imagen} alt="Product" className="w-full h-full object-contain" />
                                                     ) : (
-                                                        <ImageIcon className="text-gray-300 w-10 h-10 opacity-50" />
+                                                        <ImageIcon className="text-ink-soft w-10 h-10 opacity-50" />
                                                     )}
                                                 </div>
 
                                                 <div className="flex flex-col pr-4 flex-1">
-                                                    <h3 className="text-white font-black text-sm md:text-base uppercase tracking-widest leading-tight">{group.Nombre}</h3>
-                                                    <span className="text-gray-500 font-bold text-[10px] tracking-widest uppercase mt-1 flex gap-2">
+                                                    <h3 className="text-ink font-black text-sm md:text-base uppercase tracking-widest leading-tight">{group.Nombre}</h3>
+                                                    <span className="text-muted font-bold text-[10px] tracking-widest uppercase mt-1 flex gap-2">
                                                         <span>{group.UPC}</span>
                                                         <span className="opacity-50">#{groupedRecords.length - groupIndex}</span>
                                                     </span>
@@ -2485,13 +2498,13 @@ export default function InventoryScannerApp() {
                                                     {/* Costo Maestro Retroactivo */}
                                                     <div className="mt-3 flex flex-col gap-1.5">
                                                         <div className="flex items-center gap-2">
-                                                            <div className="bg-[#0A0A0B] border border-[#18181A] px-3 py-1.5 rounded-lg flex items-center gap-2">
-                                                                <DollarSign size={16} className="text-gray-500" />
+                                                            <div className="bg-field border border-line px-3 py-1.5 rounded-lg flex items-center gap-2">
+                                                                <DollarSign size={16} className="text-muted" />
                                                                 <input
                                                                     type="number"
                                                                     placeholder="0"
                                                                     data-cost-index={groupIndex}
-                                                                    className="bg-transparent text-emerald-500 font-mono font-black outline-none w-[120px] text-base md:text-lg [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                    className="bg-transparent text-brand-green-ink font-mono font-black outline-none w-[120px] text-base md:text-lg [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                                     value={group.Records[0]?.CostoUnitario === 0 && !group.Records[0].CostoTotalCOP ? "" : group.Records[0]?.CostoUnitario}
                                                                     onChange={(e) => handleUpdateUpcCost(group.UPC, e.target.value)}
                                                                     onWheel={(e) => e.currentTarget.blur()}
@@ -2505,14 +2518,14 @@ export default function InventoryScannerApp() {
                                                                     }}
                                                                 />
                                                             </div>
-                                                            <span className="text-[10px] uppercase font-bold tracking-widest text-gray-600 border border-gray-800 px-3 py-1.5 rounded">Costo Unit / USD</span>
+                                                            <span className="text-[10px] uppercase font-bold tracking-widest text-faint border border-line px-3 py-1.5 rounded">Costo Unit / USD</span>
                                                         </div>
 
                                                             {/* UI Inteligencia de Precios — Último Ingreso Histórico */}
                                                         <div className="flex items-center gap-3 pl-1 flex-wrap">
                                                             {/* Equivalencia Directa a COP — solo en modo COP */}
                                                             {(group.Records[0]?.Moneda === 'COP' && group.Records[0]?.CostoUnitario > 0) && (
-                                                                <span className="text-[10px] font-mono text-gray-500 font-medium">
+                                                                <span className="text-[10px] font-mono text-muted font-medium">
                                                                     ≈ {formatMoney((group.Records[0].CostoUnitario * (parseFloat(exchangeRate) || 1)), 'COP')}
                                                                 </span>
                                                             )}
@@ -2525,7 +2538,7 @@ export default function InventoryScannerApp() {
                                                                 // No hay historial: primer ingreso
                                                                 if (lastSavedCost === 0) {
                                                                     return (
-                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-gray-500 bg-gray-900/50 px-3 py-1 rounded-lg border border-gray-800">
+                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-muted bg-field px-3 py-1 rounded-lg border border-line">
                                                                             ✦ Primer ingreso
                                                                         </span>
                                                                     );
@@ -2534,7 +2547,7 @@ export default function InventoryScannerApp() {
                                                                 // Hay historial pero no se ha ingresado costo aún
                                                                 if (currentInputCost === 0) {
                                                                     return (
-                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-amber-400 bg-amber-950/30 px-3 py-1 rounded-lg border border-amber-900/50">
+                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-amber-700 bg-amber-500/10 px-3 py-1 rounded-lg border border-amber-500/30">
                                                                             Último: USD ${lastSavedCost}
                                                                         </span>
                                                                     );
@@ -2545,19 +2558,19 @@ export default function InventoryScannerApp() {
 
                                                                 if (diff > 0) {
                                                                     return (
-                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-red-400 bg-red-950/30 px-3 py-1 rounded-lg border border-red-900/50">
+                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-red-700 bg-red-500/10 px-3 py-1 rounded-lg border border-red-500/30">
                                                                             Último: USD ${lastSavedCost} <ArrowUpRight size={12} strokeWidth={3} /> +{pctChange.toFixed(0)}%
                                                                         </span>
                                                                     );
                                                                 } else if (diff < 0) {
                                                                     return (
-                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-emerald-400 bg-emerald-950/30 px-3 py-1 rounded-lg border border-emerald-900/50">
+                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-brand-green-ink bg-brand-green/10 px-3 py-1 rounded-lg border border-brand-green/40">
                                                                             Último: USD ${lastSavedCost} <ArrowDownRight size={12} strokeWidth={3} /> {pctChange.toFixed(0)}%
                                                                         </span>
                                                                     );
                                                                 } else {
                                                                     return (
-                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-gray-400 bg-gray-900/50 px-3 py-1 rounded-lg border border-gray-800">
+                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-muted bg-field px-3 py-1 rounded-lg border border-line">
                                                                             Último: USD ${lastSavedCost} — Igual
                                                                         </span>
                                                                     );
@@ -2569,9 +2582,9 @@ export default function InventoryScannerApp() {
                                                 </div>
 
                                                 {/* Total Units Badge Neon */}
-                                                <div className={`rounded-2xl px-5 py-3 flex flex-col items-center justify-center flex-shrink-0 ${groupIndex === 0 ? 'bg-brand-blue shadow-[0_0_25px_rgba(37,99,235,0.4)]' : 'bg-dark-input border border-dark-border'}`}>
-                                                    <span className={`font-black text-2xl leading-none ${groupIndex === 0 ? 'text-white' : 'text-gray-300'}`}>{group.TotalUnidades}</span>
-                                                    <span className={`font-bold text-[9px] uppercase tracking-widest mt-1 ${groupIndex === 0 ? 'text-white/80' : 'text-gray-600'}`}>UND</span>
+                                                <div className={`rounded-2xl px-5 py-3 flex flex-col items-center justify-center flex-shrink-0 ${groupIndex === 0 ? 'bg-brand-blue shadow-[0_4px_18px_rgba(58,82,218,0.35)]' : 'bg-field border border-line'}`}>
+                                                    <span className={`font-black text-2xl leading-none ${groupIndex === 0 ? 'text-white' : 'text-ink-soft'}`}>{group.TotalUnidades}</span>
+                                                    <span className={`font-bold text-[9px] uppercase tracking-widest mt-1 ${groupIndex === 0 ? 'text-white/80' : 'text-faint'}`}>UND</span>
                                                 </div>
                                             </div>
 
@@ -2581,15 +2594,15 @@ export default function InventoryScannerApp() {
                                                     return (
                                                         <div key={r.ID} className={`group/tag flex items-center rounded-xl border transition-all duration-300 max-w-full ${
                                                             isMostRecentScanned
-                                                                ? 'bg-brand-blue text-white shadow-[0_0_30px_rgba(37,99,235,0.5)] border-transparent scale-[1.05] animate-pulse gap-4 px-6 py-4'
-                                                                : 'bg-[#0A0A0B] border-dark-border text-gray-400 hover:border-gray-700 hover:text-gray-200 gap-3 px-4 py-2.5'
+                                                                ? 'bg-brand-blue text-white shadow-[0_4px_18px_rgba(58,82,218,0.4)] border-transparent scale-[1.05] animate-pulse gap-4 px-6 py-4'
+                                                                : 'bg-field border-line text-muted hover:border-line-strong hover:text-ink gap-3 px-4 py-2.5'
                                                         }`}>
                                                             <span className={`font-mono font-black tracking-widest uppercase break-all truncate ${
                                                                 isMostRecentScanned ? 'text-xl md:text-2xl' : 'text-xs'
                                                             }`}>
                                                                 {r.Serial || `MASIVO x${r.Cantidad}`}
                                                             </span>
-                                                            <button onClick={(e) => handleDeleteRecord(r.ID, e)} className={`flex-shrink-0 transition-opacity ${isMostRecentScanned ? 'opacity-100 text-white/70 hover:text-white' : 'opacity-0 group-hover/tag:opacity-100 hover:text-red-400'}`}>
+                                                            <button onClick={(e) => handleDeleteRecord(r.ID, e)} className={`flex-shrink-0 transition-opacity ${isMostRecentScanned ? 'opacity-100 text-white/70 hover:text-white' : 'opacity-0 group-hover/tag:opacity-100 hover:text-red-600'}`}>
                                                                 <X size={isMostRecentScanned ? 18 : 14} strokeWidth={3} />
                                                             </button>
                                                         </div>

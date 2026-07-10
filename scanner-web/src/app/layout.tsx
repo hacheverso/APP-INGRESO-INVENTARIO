@@ -1,10 +1,20 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const geistSans = Geist({
-    variable: "--font-geist-sans",
-    subsets: ["latin"],
+const poppins = localFont({
+    src: [
+        { path: "./fonts/Poppins-Regular.ttf", weight: "400", style: "normal" },
+        { path: "./fonts/Poppins-Bold.ttf", weight: "700", style: "normal" },
+    ],
+    variable: "--font-poppins",
+});
+
+const britanica = localFont({
+    src: "./fonts/Britanica-SemiExpanded-Heavy.ttf",
+    weight: "900",
+    variable: "--font-britanica",
 });
 
 const geistMono = Geist_Mono({
@@ -23,9 +33,9 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="en">
+        <html lang="es">
             <body
-                className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+                className={`${poppins.variable} ${britanica.variable} ${geistMono.variable} antialiased`}
             >
                 {children}
             </body>
