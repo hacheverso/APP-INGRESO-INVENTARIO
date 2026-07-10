@@ -43,6 +43,7 @@ export async function GET() {
                 SKU: p.sku,
                 NOMBRE: p.name,
                 IMAGEN: p.image || "",
+                CATEGORIA: p.category || "",
                 LastCost: p.lastCost || 0
             };
         });
@@ -64,7 +65,7 @@ export async function GET() {
                         PRECIO: sheetProduct.PRECIO,
                         COSTO: sheetProduct.COSTO,
                         MARGEN: sheetProduct.MARGEN,
-                        CATEGORIA: sheetProduct.CATEGORIA,
+                        CATEGORIA: productDB[key].CATEGORIA || sheetProduct.CATEGORIA,
                         COSTO_TOTAL: sheetProduct.COSTO_TOTAL,
                         DIAS_SIN_VENDER: sheetProduct.DIAS_SIN_VENDER,
                     };
@@ -103,6 +104,7 @@ export async function POST(req: Request) {
                         sku: item.SKU || '',
                         name: item.NOMBRE,
                         image: item.IMAGEN || null,
+                        ...(item.CATEGORIA !== undefined ? { category: item.CATEGORIA || '' } : {}),
                         ...(item.LastCost !== undefined && item.LastCost > 0 ? { lastCost: item.LastCost } : {})
                     },
                     create: {
@@ -110,6 +112,7 @@ export async function POST(req: Request) {
                         sku: item.SKU || '',
                         name: item.NOMBRE,
                         image: item.IMAGEN || null,
+                        category: item.CATEGORIA || '',
                         lastCost: item.LastCost || 0,
                         userId: session.userId
                     }
@@ -121,7 +124,7 @@ export async function POST(req: Request) {
         } 
         
         // Branch 2: Single Product Process (Object)
-        const { UPC, SKU, NOMBRE, IMAGEN, syncHolded } = body;
+        const { UPC, SKU, NOMBRE, IMAGEN, CATEGORIA, syncHolded } = body;
 
         if (!UPC || !NOMBRE) {
             return NextResponse.json({ success: false, error: 'UPC and NOMBRE are required' }, { status: 400 });
@@ -133,6 +136,7 @@ export async function POST(req: Request) {
                 sku: SKU || '',
                 name: NOMBRE,
                 image: IMAGEN || null,
+                ...(CATEGORIA !== undefined ? { category: CATEGORIA || '' } : {}),
                 ...(body.LastCost !== undefined && body.LastCost > 0 ? { lastCost: body.LastCost } : {})
             },
             create: {
@@ -140,6 +144,7 @@ export async function POST(req: Request) {
                 sku: SKU || '',
                 name: NOMBRE,
                 image: IMAGEN || null,
+                category: CATEGORIA || '',
                 lastCost: body.LastCost || 0,
                 userId: session.userId
             }
@@ -174,7 +179,7 @@ export async function PUT(req: Request) {
         if (!session) return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
 
         const body = await req.json();
-        const { UPC, SKU, NOMBRE, IMAGEN } = body;
+        const { UPC, SKU, NOMBRE, IMAGEN, CATEGORIA } = body;
 
         if (!UPC || !NOMBRE) {
             return NextResponse.json({ success: false, error: 'UPC and NOMBRE are required for update' }, { status: 400 });
@@ -185,7 +190,8 @@ export async function PUT(req: Request) {
             data: {
                 sku: SKU || '',
                 name: NOMBRE,
-                image: IMAGEN || null
+                image: IMAGEN || null,
+                ...(CATEGORIA !== undefined ? { category: CATEGORIA || '' } : {})
             }
         });
 

@@ -96,9 +96,16 @@ export default function InventoryScannerApp() {
     const [productDB, setProductDB] = useState<Record<string, Product>>({});
     const [matchedProduct, setMatchedProduct] = useState<Product | null>(null);
     const [showNewProductModal, setShowNewProductModal] = useState(false);
-    const [newProductForm, setNewProductForm] = useState({ UPC: '', NOMBRE: '', SKU: '', IMAGEN: '' });
+    const [newProductForm, setNewProductForm] = useState({ UPC: '', NOMBRE: '', SKU: '', IMAGEN: '', CATEGORIA: '' });
     const [productSearchTerm, setProductSearchTerm] = useState("");
     const [unknownUpc, setUnknownUpc] = useState<string | null>(null); // Product-not-found prompt
+
+    // Categorías de producto: las creadas por el usuario + las ya usadas en el catálogo
+    const [categoriasList, setCategoriasList] = useState<string[]>([]);
+    const categoriasDisponibles = Array.from(new Set([
+        ...categoriasList,
+        ...Object.values(productDB).map(p => (p.CATEGORIA || '').trim().toUpperCase()).filter(Boolean)
+    ])).sort();
 
     // Google Sheets Connection State
     const [sheetsConnected, setSheetsConnected] = useState(false);
@@ -239,6 +246,16 @@ export default function InventoryScannerApp() {
                 console.error("Error cargando proveedores", e);
             }
         }
+
+        const savedCategorias = localStorage.getItem('scanner_categorias');
+        if (savedCategorias) {
+            try {
+                const parsedCategorias = JSON.parse(savedCategorias);
+                if (Array.isArray(parsedCategorias)) setCategoriasList(parsedCategorias);
+            } catch (e) {
+                console.error("Error cargando categorías", e);
+            }
+        }
     }, []);
 
     // Set initial focus
@@ -277,6 +294,13 @@ export default function InventoryScannerApp() {
             localStorage.setItem('scanner_proveedores', JSON.stringify(listaProveedores));
         }
     }, [listaProveedores, isClient]);
+
+    // Manejo Persistencia Categorías creadas por el usuario
+    useEffect(() => {
+        if (isClient && categoriasList.length > 0) {
+            localStorage.setItem('scanner_categorias', JSON.stringify(categoriasList));
+        }
+    }, [categoriasList, isClient]);
 
     // Retroactividad: Si cambia la moneda global o la TRM, actualizar todos los registros activos en la sesión actual.
     // USD = puro dólares (sin conversión). COP = ingreso en USD con conversión a pesos vía TRM.
@@ -629,25 +653,27 @@ export default function InventoryScannerApp() {
     };
 
     const handleSaveNewProduct = async () => {
-        const { UPC, NOMBRE, SKU, IMAGEN } = newProductForm;
+        const { UPC, NOMBRE, SKU, IMAGEN, CATEGORIA } = newProductForm;
         if (!NOMBRE.trim()) {
             showToast("El nombre del producto es obligatorio.", 'error');
             return;
         }
 
-        const newProd: Product = { UPC, NOMBRE: NOMBRE.trim(), SKU: SKU.trim(), IMAGEN, LastCost: 0 };
+        const newProd: Product = { UPC, NOMBRE: NOMBRE.trim(), SKU: SKU.trim(), IMAGEN, CATEGORIA: (CATEGORIA || '').trim(), LastCost: 0 };
+        // Solo se crea en Holded cuando el producto es nuevo; editar no debe duplicarlo
+        const isNewProduct = !productDB[UPC];
 
         try {
             const res = await fetch('/api/products', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...newProd, syncHolded: true })
+                body: JSON.stringify({ ...newProd, syncHolded: isNewProduct })
             });
             const data = await res.json();
 
             if (data.success) {
                 // Optimistic UI Update
-                setProductDB(prev => ({ ...prev, [UPC]: newProd }));
+                setProductDB(prev => ({ ...prev, [UPC]: { ...prev[UPC], ...newProd } }));
                 setMatchedProduct(newProd);
                 speakProduct(newProd.NOMBRE);
                 setShowNewProductModal(false);
@@ -659,7 +685,7 @@ export default function InventoryScannerApp() {
                 } else if (data.holded) {
                     showToast(`Producto guardado en la nube, pero Holded falló: ${data.holded.error}`, 'error');
                 } else {
-                    showToast("Producto creado en la nube al instante.", 'success');
+                    showToast(isNewProduct ? "Producto creado en la nube al instante." : "Producto actualizado en la nube.", 'success');
                 }
 
                 // Auto-expand the newly created group
@@ -1523,6 +1549,31 @@ export default function InventoryScannerApp() {
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><label className={labelClass}>Referencia / Auto SKU</label><input type="text" value={newProductForm.SKU} onChange={e => setNewProductForm({ ...newProductForm, SKU: e.target.value })} onKeyDown={e => handleKeyDown(e, 'modal_submit')} className={`${inputClass} font-mono text-sm tracking-widest text-brand-blue uppercase`} placeholder="Generado Aut..." /></div>
+                                <div>
+                                    <label className={labelClass}>Categoría</label>
+                                    <select
+                                        value={newProductForm.CATEGORIA}
+                                        onChange={e => {
+                                            if (e.target.value === '__nueva__') {
+                                                const nombre = prompt('Nombre de la nueva categoría:');
+                                                const limpio = (nombre || '').trim().toUpperCase();
+                                                if (limpio) {
+                                                    setCategoriasList(prev => Array.from(new Set([...prev, limpio])).sort());
+                                                    setNewProductForm(prev => ({ ...prev, CATEGORIA: limpio }));
+                                                }
+                                            } else {
+                                                setNewProductForm(prev => ({ ...prev, CATEGORIA: e.target.value }));
+                                            }
+                                        }}
+                                        className={`${inputClass} cursor-pointer`}
+                                    >
+                                        <option value="">Sin categoría</option>
+                                        {categoriasDisponibles.map(cat => (
+                                            <option key={cat} value={cat}>{cat}</option>
+                                        ))}
+                                        <option value="__nueva__">➕ Crear nueva categoría...</option>
+                                    </select>
+                                </div>
                                 <div className="flex flex-col">
                                     <label className={labelClass}>URL de Imagen</label>
                                     <div className="flex gap-2 relative items-center">
@@ -2151,6 +2202,7 @@ export default function InventoryScannerApp() {
                                                 <th className="px-6 py-4 font-black">UPC</th>
                                                 <th className="px-6 py-4 font-black">Nombre</th>
                                                 <th className="px-6 py-4 font-black">SKU</th>
+                                                <th className="px-6 py-4 font-black">Categoría</th>
                                                 <th className="px-6 py-4 font-black text-right min-w-[120px]">Acciones</th>
                                             </tr>
                                         </thead>
@@ -2160,7 +2212,7 @@ export default function InventoryScannerApp() {
                                                     if (!p.UPC) return false; // Skip products without barcode
                                                     if (!productSearchTerm) return true;
                                                     const term = productSearchTerm.toLowerCase();
-                                                    return p.NOMBRE.toLowerCase().includes(term) || p.UPC.includes(term);
+                                                    return p.NOMBRE.toLowerCase().includes(term) || p.UPC.includes(term) || (p.CATEGORIA || '').toLowerCase().includes(term);
                                                 })
                                                 .map((prod, idx) => (
                                                 <tr key={prod.UPC || `product-${idx}`} className="hover:bg-ink/5 transition-colors group">
@@ -2176,11 +2228,20 @@ export default function InventoryScannerApp() {
                                                     <td className="px-6 py-4 font-mono text-brand-blue font-bold">{prod.UPC}</td>
                                                     <td className="px-6 py-4 font-bold max-w-xs truncate" title={prod.NOMBRE}>{prod.NOMBRE}</td>
                                                     <td className="px-6 py-4 text-xs tracking-wider opacity-60 font-mono">{prod.SKU || '---'}</td>
+                                                    <td className="px-6 py-4">
+                                                        {prod.CATEGORIA ? (
+                                                            <span className="inline-flex items-center gap-1.5 bg-brand-green/10 text-brand-green-ink border border-brand-green/30 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider">
+                                                                <Tags size={11} /> {prod.CATEGORIA}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-faint text-xs">---</span>
+                                                        )}
+                                                    </td>
                                                     <td className="px-6 py-4 text-right">
                                                         <div className="flex justify-end gap-2 opacity-100 sm:opacity-50 group-hover:opacity-100 transition-opacity">
                                                             <button 
                                                                 onClick={() => {
-                                                                    setNewProductForm({ UPC: prod.UPC, NOMBRE: prod.NOMBRE, SKU: prod.SKU || '', IMAGEN: prod.IMAGEN || '' });
+                                                                    setNewProductForm({ UPC: prod.UPC, NOMBRE: prod.NOMBRE, SKU: prod.SKU || '', IMAGEN: prod.IMAGEN || '', CATEGORIA: prod.CATEGORIA || '' });
                                                                     setShowNewProductModal(true);
                                                                 }} 
                                                                 className="p-2 bg-page hover:bg-brand-blue/20 text-muted hover:text-brand-blue rounded-lg transition-colors border border-line shadow-sm"
@@ -2359,7 +2420,7 @@ export default function InventoryScannerApp() {
                                             <div className="flex gap-3 pointer-events-auto">
                                                 <button
                                                     onClick={() => {
-                                                        setNewProductForm({ UPC: unknownUpc, NOMBRE: '', SKU: '', IMAGEN: '' });
+                                                        setNewProductForm({ UPC: unknownUpc, NOMBRE: '', SKU: '', IMAGEN: '', CATEGORIA: '' });
                                                         setShowNewProductModal(true);
                                                         setUnknownUpc(null);
                                                         setTimeout(() => modalNameRef.current?.focus(), 100);
