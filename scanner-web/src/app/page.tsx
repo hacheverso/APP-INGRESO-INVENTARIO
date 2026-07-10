@@ -747,6 +747,47 @@ export default function InventoryScannerApp() {
         }
     };
 
+    // Copiar la sesión al portapapeles en formato para pegar en Excel/Sheets:
+    // mismas columnas y orden del export (FECHA → PROVEEDOR), sin la de imagen.
+    const copySessionToClipboard = async (session: HistorySession) => {
+        const recordsToCopy = session.records;
+        if (!recordsToCopy || recordsToCopy.length === 0) {
+            showToast("No hay registros para copiar.", 'error');
+            return;
+        }
+
+        const exportMode = recordsToCopy[0].Moneda;
+
+        const rows = recordsToCopy.map(r => {
+            let fechaFormatted = r.FechaHora;
+            try {
+                const datePart = r.FechaHora.split(' ')[0].replace(/,+$/, '');
+                const [year, month, day] = datePart.split('-');
+                if (year && month && day) fechaFormatted = `${day.replace(/,+$/, '')}/${month}/${year}`;
+            } catch (e) { /* mantener original */ }
+
+            const cols: (string | number)[] = [fechaFormatted, r.Serial || '', r.UPC, r.SKU, r.Nombre, r.CostoUnitario];
+            if (exportMode === 'COP') {
+                cols.push(r.TasaCambio, r.CostoTotalCOP);
+            } else {
+                cols.push(r.CostoUnitario * r.Cantidad);
+            }
+            cols.push(session.proveedor || r.Proveedor || '');
+            return cols;
+        }).sort((a, b) => String(a[4]).localeCompare(String(b[4]))); // por NOMBRE, como el Excel
+
+        // TSV: al pegar, cada valor cae en su propia columna
+        const tsv = rows.map(cols => cols.map(c => String(c ?? '').replace(/[\t\n\r]+/g, ' ')).join('\t')).join('\n');
+
+        try {
+            await navigator.clipboard.writeText(tsv);
+            showToast(`${rows.length} filas copiadas (fecha → proveedor). Pégalas en tu Excel con Ctrl+V.`, 'success');
+        } catch (error) {
+            console.error("Error copiando al portapapeles:", error);
+            showToast("No se pudo copiar al portapapeles. Intenta de nuevo.", 'error');
+        }
+    };
+
     // Helper: Generador Inteligente de SKU
     const generateSKU = (name: string) => {
         if (!name) return "";
@@ -2105,10 +2146,18 @@ export default function InventoryScannerApp() {
                                                 <ScanLine size={14} /> Reabrir
                                             </button>
                                             <button
-                                                onClick={() => exportToExcel(session.records, session.lote, session.proveedor, false)}
+                                                onClick={() => copySessionToClipboard(session)}
                                                 className="flex-1 flex items-center justify-center gap-2 bg-brand-green/15 hover:bg-brand-green text-brand-green-ink hover:text-ink py-2 rounded-xl border border-brand-green/40 transition-colors font-bold text-xs uppercase"
+                                                title="Copiar las filas (fecha → proveedor) para pegar en Excel"
                                             >
-                                                <FileDown size={14} /> Excel
+                                                <ClipboardPaste size={14} /> Copiar
+                                            </button>
+                                            <button
+                                                onClick={() => exportToExcel(session.records, session.lote, session.proveedor, false)}
+                                                className="px-3 flex items-center justify-center bg-field hover:bg-brand-green/15 text-muted hover:text-brand-green-ink py-2 rounded-xl border border-transparent transition-colors"
+                                                title="Descargar archivo Excel"
+                                            >
+                                                <FileDown size={14} />
                                             </button>
                                             <button
                                                 onClick={() => {
