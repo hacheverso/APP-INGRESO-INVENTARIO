@@ -46,6 +46,9 @@ model HistorySession {
   records    HistoryRecord[]
   createdAt  DateTime @default(now())
 
+  holdedInvoiceId  String?
+  holdedInvoiceNum String?
+
   userId String   @default("")
   user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

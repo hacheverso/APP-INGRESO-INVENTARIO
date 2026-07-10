@@ -39,6 +39,8 @@ export async function GET() {
                 totalUnidades: s.totalItems,
                 costoTotalCOP: s.totalCop,
                 monedaBase: sessionMoneda,
+                holdedInvoiceId: s.holdedInvoiceId || null,
+                holdedInvoiceNum: s.holdedInvoiceNum || null,
                 records: s.records.map(r => {
                     const serialesArray = JSON.parse(r.seriales || '[]');
                     const isCOP = r.trm > 1;

@@ -19,6 +19,8 @@ interface HistorySession {
     totalUnidades: number;
     costoTotalCOP: number;
     monedaBase: Currency;
+    holdedInvoiceId?: string | null;
+    holdedInvoiceNum?: string | null;
     records: InventoryRecord[];
 }
 
@@ -133,6 +135,7 @@ export default function InventoryScannerApp() {
     const [isAudioEnabled, setIsAudioEnabled] = useState(true);
     const [speechRate, setSpeechRate] = useState<number>(1.0);
     const [deleteConfirm, setDeleteConfirm] = useState<{ id: string | null; type: 'record' | 'session' }>({ id: null, type: 'record' });
+    const [holdedInvoicingId, setHoldedInvoicingId] = useState<string | null>(null);
 
     // Refs para control de focus
     const upcRef = useRef<HTMLInputElement>(null);
@@ -657,6 +660,51 @@ export default function InventoryScannerApp() {
         } catch (error) {
             console.error("Error saving product to cloud:", error);
             showToast("Error de conexión al intentar guardar.", 'error');
+        }
+    };
+
+    // Crear factura de compra en Holded a partir de una sesión del historial
+    const handleCreateHoldedInvoice = async (session: HistorySession) => {
+        if (!session.proveedor) {
+            showToast("La sesión no tiene proveedor. Reábrela, asigna el proveedor y guárdala de nuevo.", 'error');
+            return;
+        }
+
+        const confirmMsg = session.holdedInvoiceNum
+            ? `Esta sesión YA tiene la factura ${session.holdedInvoiceNum} en Holded. ¿Crear OTRA factura de compra?`
+            : `¿Crear factura de compra en Holded para "${session.lote}" (${session.totalUnidades} unidades, ${formatMoney(session.costoTotalCOP, 'COP')}) a nombre de "${session.proveedor}"?`;
+        if (!confirm(confirmMsg)) return;
+
+        setHoldedInvoicingId(session.id);
+        try {
+            const res = await fetch('/api/holded/purchase-invoice', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: session.id, force: !!session.holdedInvoiceNum })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                setSavedSessions(prev => prev.map(s => s.id === session.id
+                    ? { ...s, holdedInvoiceId: data.holdedInvoiceId, holdedInvoiceNum: data.invoiceNum }
+                    : s));
+                let msg = `Factura ${data.invoiceNum} creada en Holded a nombre de ${data.supplierName} (${data.lineCount} líneas).`;
+                if (data.supplierCreated) msg += ` El proveedor se creó nuevo en Holded.`;
+                if (data.createdProducts > 0) msg += ` Se crearon ${data.createdProducts} productos que no existían en Holded.`;
+                showToast(msg, 'success');
+            } else if (data.alreadyInvoiced) {
+                setSavedSessions(prev => prev.map(s => s.id === session.id
+                    ? { ...s, holdedInvoiceNum: data.invoiceNum }
+                    : s));
+                showToast(`Esta sesión ya tiene la factura ${data.invoiceNum} en Holded.`, 'info');
+            } else {
+                showToast(`No se pudo crear la factura en Holded: ${data.error}`, 'error');
+            }
+        } catch (error) {
+            console.error("Error creando factura en Holded:", error);
+            showToast("Error de conexión al crear la factura en Holded.", 'error');
+        } finally {
+            setHoldedInvoicingId(null);
         }
     };
 
@@ -1960,6 +2008,27 @@ export default function InventoryScannerApp() {
                                                 </span>
                                             </div>
                                         </div>
+
+                                        {session.monedaBase === 'COP' && (
+                                            <button
+                                                onClick={() => handleCreateHoldedInvoice(session)}
+                                                disabled={holdedInvoicingId === session.id}
+                                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border transition-colors font-bold text-xs uppercase tracking-wider disabled:opacity-60 disabled:cursor-wait ${
+                                                    session.holdedInvoiceNum
+                                                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/20'
+                                                        : 'bg-brand-blue/10 border-brand-blue/40 text-brand-blue hover:bg-brand-blue hover:text-white'
+                                                }`}
+                                                title={session.holdedInvoiceNum ? `Factura ${session.holdedInvoiceNum} ya creada en Holded (clic para crear otra)` : 'Crear factura de compra en Holded'}
+                                            >
+                                                {holdedInvoicingId === session.id ? (
+                                                    <><RefreshCw size={14} className="animate-spin" /> Creando factura...</>
+                                                ) : session.holdedInvoiceNum ? (
+                                                    <><CheckCircle size={14} /> Holded: {session.holdedInvoiceNum}</>
+                                                ) : (
+                                                    <><CloudLightning size={14} /> Crear factura de compra en Holded</>
+                                                )}
+                                            </button>
+                                        )}
 
                                         <div className="flex gap-2 mt-auto pt-4 border-t border-dark-border">
                                             <button

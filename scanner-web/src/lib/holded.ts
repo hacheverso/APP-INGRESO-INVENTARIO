@@ -68,6 +68,148 @@ export async function createHoldedProduct(params: {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Facturas de compra
+// ---------------------------------------------------------------------------
+
+const MAX_LIST_PAGES = 20;
+
+interface HoldedListItem {
+    id: string;
+    name?: string;
+    barcode?: string;
+    docNumber?: string;
+    [key: string]: any;
+}
+
+async function holdedGetList(apiKey: string, path: string): Promise<HoldedListItem[]> {
+    const all: HoldedListItem[] = [];
+    const seenIds = new Set<string>();
+    const separator = path.includes('?') ? '&' : '?';
+
+    for (let page = 1; page <= MAX_LIST_PAGES; page++) {
+        const res = await fetch(`${HOLDED_API_BASE}${path}${separator}page=${page}`, {
+            headers: { 'key': apiKey },
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        if (!res.ok) {
+            throw new Error(`Holded respondió HTTP ${res.status} al listar ${path}`);
+        }
+        const data: any = await res.json().catch(() => null);
+        if (!Array.isArray(data) || data.length === 0) break;
+
+        // Si la API ignora ?page= devuelve siempre lo mismo: cortamos al repetir ids
+        const newItems = data.filter((item: any) => item?.id && !seenIds.has(item.id));
+        if (newItems.length === 0) break;
+        newItems.forEach((item: any) => seenIds.add(item.id));
+        all.push(...newItems);
+    }
+    return all;
+}
+
+/** Busca un contacto por nombre (sin distinguir mayúsculas); si no existe lo crea como proveedor. */
+export async function findOrCreateSupplier(name: string): Promise<{ id: string; created: boolean }> {
+    const apiKey = process.env.HOLDED_API_KEY;
+    if (!apiKey) throw new Error('HOLDED_API_KEY no está configurada en el servidor');
+
+    const target = name.trim().toLowerCase();
+    const contacts = await holdedGetList(apiKey, '/contacts');
+    const existing = contacts.find(c => (c.name || '').trim().toLowerCase() === target);
+    if (existing) return { id: existing.id, created: false };
+
+    const res = await fetch(`${HOLDED_API_BASE}/contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'key': apiKey },
+        body: JSON.stringify({ name: name.trim(), type: 'supplier' }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    const data: any = await res.json().catch(() => null);
+    if (!res.ok || !data || data.status === 0 || !data.id) {
+        throw new Error(`No se pudo crear el proveedor "${name}" en Holded: ${data?.info || `HTTP ${res.status}`}`);
+    }
+    return { id: data.id, created: true };
+}
+
+/** Devuelve un mapa barcode → productId con todos los productos de Holded. */
+export async function getHoldedProductsByBarcode(): Promise<Map<string, string>> {
+    const apiKey = process.env.HOLDED_API_KEY;
+    if (!apiKey) throw new Error('HOLDED_API_KEY no está configurada en el servidor');
+
+    const products = await holdedGetList(apiKey, '/products');
+    const map = new Map<string, string>();
+    for (const p of products) {
+        const barcode = String(p.barcode || '').trim();
+        if (barcode && !map.has(barcode)) map.set(barcode, p.id);
+    }
+    return map;
+}
+
+/**
+ * Calcula el siguiente número de factura del día: YYYYMMDD-001, YYYYMMDD-002...
+ * consultando las facturas de compra ya creadas ese día en Holded.
+ */
+export async function getNextPurchaseDocNumber(dayKey: string, dayStartTs: number, dayEndTs: number): Promise<string> {
+    const apiKey = process.env.HOLDED_API_KEY;
+    if (!apiKey) throw new Error('HOLDED_API_KEY no está configurada en el servidor');
+
+    const docs = await holdedGetList(apiKey, `/documents/purchase?starttmp=${dayStartTs}&endtmp=${dayEndTs}`);
+    let maxSeq = 0;
+    const pattern = new RegExp(`^${dayKey}-(\\d{1,4})$`);
+    for (const doc of docs) {
+        const match = String(doc.docNumber || '').match(pattern);
+        if (match) maxSeq = Math.max(maxSeq, parseInt(match[1], 10));
+    }
+    return `${dayKey}-${String(maxSeq + 1).padStart(3, '0')}`;
+}
+
+export interface HoldedInvoiceItem {
+    name: string;
+    sku?: string;
+    units: number;
+    unitPriceCop: number;
+    productId?: string;
+}
+
+/** Crea la factura de compra en Holded. Devuelve el id del documento creado. */
+export async function createPurchaseInvoice(params: {
+    contactId: string;
+    docNumber: string;
+    dateTs: number;
+    notes?: string;
+    items: HoldedInvoiceItem[];
+}): Promise<string> {
+    const apiKey = process.env.HOLDED_API_KEY;
+    if (!apiKey) throw new Error('HOLDED_API_KEY no está configurada en el servidor');
+
+    const body = {
+        contactId: params.contactId,
+        date: params.dateTs,
+        docNumber: params.docNumber,
+        notes: params.notes || '',
+        items: params.items.map(item => ({
+            name: item.name,
+            sku: item.sku || undefined,
+            productId: item.productId || undefined,
+            units: item.units,
+            subtotal: item.unitPriceCop,
+            price: item.unitPriceCop,
+            tax: 0,
+        })),
+    };
+
+    const res = await fetch(`${HOLDED_API_BASE}/documents/purchase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'key': apiKey },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    const data: any = await res.json().catch(() => null);
+    if (!res.ok || !data || data.status === 0 || !data.id) {
+        throw new Error(`Holded rechazó la factura: ${data?.info || data?.message || `HTTP ${res.status}`}`);
+    }
+    return data.id;
+}
+
 /**
  * Descarga la imagen desde el link proporcionado y la sube al producto en Holded
  * (PUT /products/{id}/image, multipart form-data). Best-effort: si falla, el
