@@ -4,7 +4,8 @@ import { jwtVerify } from 'jose';
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-secret-please-change');
 const COOKIE_NAME = 'ingresados_token';
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/register'];
+// /api/products/export tiene su propia autenticación por token (Apps Script no maneja cookies)
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/register', '/api/products/export'];
 
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
