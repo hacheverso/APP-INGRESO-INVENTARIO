@@ -153,6 +153,7 @@ export async function POST(req: Request) {
                 holded = await createHoldedProduct({
                     name: NOMBRE,
                     barcode: UPC,
+                    sku: SKU || null,
                     imageUrl: IMAGEN || null
                 });
             } else {

@@ -725,12 +725,15 @@ export default function InventoryScannerApp() {
     const generateSKU = (name: string) => {
         if (!name) return "";
         let upperName = name.toUpperCase();
-        let isUsed = upperName.includes("USADO") || upperName.includes("OPEN BOX");
+        // Condición del producto: -N nuevo, -O open box, -U usado
+        let isOpenBox = upperName.includes("OPEN BOX") || upperName.includes("OPENBOX");
+        let isUsed = !isOpenBox && upperName.includes("USADO");
 
         // Limpiar flags para no ponerlos a la mitad
         let cleanName = upperName
             .replace(/USADO/g, '')
             .replace(/OPEN BOX/g, '')
+            .replace(/OPENBOX/g, '')
             .trim();
 
         // Diccionario de abreviaciones comunes
@@ -761,7 +764,7 @@ export default function InventoryScannerApp() {
             return abv.substring(0, 4); // max 4 caracteres por palabra desconocida
         });
 
-        const suffix = isUsed ? "-U" : "-N";
+        const suffix = isUsed ? "-U" : isOpenBox ? "-O" : "-N";
         return skuParts.join('-') + suffix;
     };
 
