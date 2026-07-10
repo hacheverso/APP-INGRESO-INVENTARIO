@@ -24,6 +24,7 @@ export function isHoldedConfigured(): boolean {
 export async function createHoldedProduct(params: {
     name: string;
     barcode: string;
+    sku?: string | null;
     imageUrl?: string | null;
 }): Promise<HoldedSyncResult> {
     const apiKey = process.env.HOLDED_API_KEY;
@@ -42,6 +43,7 @@ export async function createHoldedProduct(params: {
                 kind: 'simple',
                 name: params.name,
                 barcode: params.barcode,
+                ...(params.sku ? { sku: params.sku } : {}),
             }),
             signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
@@ -156,7 +158,7 @@ export async function getNextPurchaseDocNumber(dayKey: string, dayStartTs: numbe
     let maxSeq = 0;
     const pattern = new RegExp(`^${dayKey}-(\\d{1,4})$`);
     for (const doc of docs) {
-        const match = String(doc.docNumber || '').match(pattern);
+        const match = String(doc.docNumber || doc.invoiceNum || '').match(pattern);
         if (match) maxSeq = Math.max(maxSeq, parseInt(match[1], 10));
     }
     return `${dayKey}-${String(maxSeq + 1).padStart(3, '0')}`;
@@ -184,6 +186,9 @@ export async function createPurchaseInvoice(params: {
     const body = {
         contactId: params.contactId,
         date: params.dateTs,
+        // Holded usa "invoiceNum" para el número de documento al crear;
+        // "docNumber" es como lo devuelve al listar. Enviamos ambos.
+        invoiceNum: params.docNumber,
         docNumber: params.docNumber,
         notes: params.notes || '',
         items: params.items.map(item => ({

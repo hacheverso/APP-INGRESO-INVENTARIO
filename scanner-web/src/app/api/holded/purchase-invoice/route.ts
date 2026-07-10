@@ -98,6 +98,7 @@ export async function POST(req: Request) {
                 const created = await createHoldedProduct({
                     name: line.nombre || `Producto ${line.upc}`,
                     barcode: line.upc,
+                    sku: line.sku || null,
                     imageUrl: line.imagen || null
                 });
                 if (created.ok && created.holdedId) {
