@@ -2325,16 +2325,16 @@ export default function InventoryScannerApp() {
                             </div>
 
                             {/* Big Dark Canvas Box (Ghost Input) */}
-                            <div className={`flex-1 bg-card rounded-3xl border border-line shadow-[0_10px_30px_rgba(23,28,20,0.05)] p-6 flex flex-col items-center justify-center relative min-h-[300px] transition-all duration-300 group overflow-hidden ${isFlashing && scanStatus === 'success' ? 'ring-2 ring-brand-green/60 bg-brand-green/10' : ''} ${isFlashing && scanStatus === 'error' ? 'ring-2 ring-red-500/50 bg-red-500/10' : ''}`}>
+                            <div className={`flex-1 bg-card rounded-3xl border border-line shadow-[0_10px_30px_rgba(23,28,20,0.05)] p-6 flex flex-col items-center justify-center relative min-h-[440px] transition-all duration-300 group overflow-hidden ${isFlashing && scanStatus === 'success' ? 'ring-2 ring-brand-green/60 bg-brand-green/10' : ''} ${isFlashing && scanStatus === 'error' ? 'ring-2 ring-red-500/50 bg-red-500/10' : ''}`}>
 
                                 {/* Tarjeta de Producto Reconocido (Oculta el input visualmente cuando hay match) */}
                                 {matchedProduct ? (
                                     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-6 z-30 bg-card rounded-3xl overflow-y-auto custom-scrollbar">
                                         <div className="flex flex-col items-center gap-4 text-center mt-auto mb-auto animate-in slide-in-from-bottom-4 duration-300 w-full">
                                             {matchedProduct.IMAGEN && (matchedProduct.IMAGEN.startsWith('http') || matchedProduct.IMAGEN.startsWith('data:')) && (
-                                                <div className="w-[140px] h-[140px] rounded-2xl overflow-hidden bg-ink/5 border border-ink/10 shadow-2xl p-4 flex items-center justify-center shrink-0">
+                                                <div className="w-[220px] h-[220px] md:w-[260px] md:h-[260px] rounded-2xl overflow-hidden bg-white border border-line shadow-[0_10px_30px_rgba(23,28,20,0.10)] p-3 flex items-center justify-center shrink-0">
                                                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                    <img src={matchedProduct.IMAGEN} alt={matchedProduct.NOMBRE} className="max-w-full max-h-full object-contain" />
+                                                    <img src={matchedProduct.IMAGEN} alt={matchedProduct.NOMBRE} className="w-full h-full object-contain" />
                                                 </div>
                                             )}
                                             <h2 className="text-2xl md:text-3xl font-black text-ink leading-tight uppercase">{matchedProduct.NOMBRE}</h2>
