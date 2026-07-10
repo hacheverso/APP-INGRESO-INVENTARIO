@@ -58,7 +58,8 @@ export async function GET() {
                         ...productDB[key],
                         NOMBRE: sheetProduct.NOMBRE || productDB[key].NOMBRE,
                         SKU: sheetProduct.SKU || productDB[key].SKU,
-                        IMAGEN: sheetProduct.IMAGEN || productDB[key].IMAGEN,
+                        // La imagen de la BD manda (es la que el usuario cura); Sheets solo es respaldo
+                        IMAGEN: productDB[key].IMAGEN || sheetProduct.IMAGEN,
                         LastCost: productDB[key].LastCost || 0, // DB is source of truth for LastCost (USD)
                         // Extended fields from Sheets
                         STOCK: sheetProduct.STOCK,
