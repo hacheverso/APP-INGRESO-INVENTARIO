@@ -625,7 +625,7 @@ export default function InventoryScannerApp() {
             const res = await fetch('/api/products', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(newProd)
+                body: JSON.stringify({ ...newProd, syncHolded: true })
             });
             const data = await res.json();
 
@@ -635,7 +635,16 @@ export default function InventoryScannerApp() {
                 setMatchedProduct(newProd);
                 speakProduct(newProd.NOMBRE);
                 setShowNewProductModal(false);
-                showToast("Producto creado en la nube al instante.", 'success');
+
+                if (data.holded?.ok) {
+                    showToast(data.holded.imageUploaded
+                        ? "Producto creado en la nube y en Holded (con imagen)."
+                        : "Producto creado en la nube y en Holded (sin imagen).", 'success');
+                } else if (data.holded) {
+                    showToast(`Producto guardado en la nube, pero Holded falló: ${data.holded.error}`, 'error');
+                } else {
+                    showToast("Producto creado en la nube al instante.", 'success');
+                }
 
                 // Auto-expand the newly created group
                 setExpandedGroups((prev) => ({ ...prev, [newProd.UPC]: true }));

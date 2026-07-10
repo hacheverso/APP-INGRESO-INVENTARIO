@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSession } from '@/lib/auth';
 import { fetchSheetsProducts } from '@/lib/sheets';
+import { createHoldedProduct, isHoldedConfigured } from '@/lib/holded';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,7 +121,7 @@ export async function POST(req: Request) {
         } 
         
         // Branch 2: Single Product Process (Object)
-        const { UPC, SKU, NOMBRE, IMAGEN } = body;
+        const { UPC, SKU, NOMBRE, IMAGEN, syncHolded } = body;
 
         if (!UPC || !NOMBRE) {
             return NextResponse.json({ success: false, error: 'UPC and NOMBRE are required' }, { status: 400 });
@@ -144,7 +145,22 @@ export async function POST(req: Request) {
             }
         });
 
-        return NextResponse.json({ success: true, data: product });
+        // Sync a Holded solo cuando el frontend lo pide (creación desde el modal de producto nuevo).
+        // Best-effort: un fallo en Holded no revierte el guardado local.
+        let holded = null;
+        if (syncHolded) {
+            if (isHoldedConfigured()) {
+                holded = await createHoldedProduct({
+                    name: NOMBRE,
+                    barcode: UPC,
+                    imageUrl: IMAGEN || null
+                });
+            } else {
+                holded = { ok: false, error: 'HOLDED_API_KEY no está configurada en el servidor' };
+            }
+        }
+
+        return NextResponse.json({ success: true, data: product, holded });
     } catch (error: any) {
         console.error("Error upserting product:", error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
