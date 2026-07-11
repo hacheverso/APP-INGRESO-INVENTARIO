@@ -57,12 +57,12 @@ export default function LoginPage() {
                     <div className="inline-flex items-center justify-center w-20 h-20 mb-6 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(91,202,45,0.35)] border border-brand-green/30">
                         <img src="/logo.png" alt="INGRESADOS" className="w-full h-full object-cover" />
                     </div>
-                    <h1 className="font-display text-3xl tracking-[0.3em] text-ink uppercase">INGRESADOS</h1>
+                    <h1 className="font-display text-3xl tracking-[0.12em] text-ink uppercase">INGRESADOS</h1>
                     <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-muted mt-2">INVENTORY & TRACKING SYSTEM</p>
                 </div>
 
                 {/* Login Card */}
-                <div className="bg-card border border-line rounded-3xl shadow-[0_18px_50px_rgba(23,28,20,0.10)] overflow-hidden">
+                <div className="glass-strong rounded-3xl overflow-hidden">
                     {/* Tab Toggle */}
                     <div className="flex border-b border-line">
                         <button
