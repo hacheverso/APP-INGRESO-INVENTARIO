@@ -1977,15 +1977,17 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                 {/* Zona Izquierda: Identidad */}
                 <div className="flex items-center gap-4 cursor-pointer" onClick={() => navigateTo('SCANNER')}>
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl overflow-hidden shadow-[0_0_15px_rgba(91,202,45,0.45)] flex-shrink-0">
+                        <div className="w-10 h-10 md:w-12 md:h-12 rounded-full overflow-hidden shadow-[0_0_18px_rgba(91,202,45,0.5)] flex-shrink-0">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src="/logo.png" alt="INGRESADOS Logo" className="w-full h-full object-cover" />
+                            <img src="/logo-mascot.png" alt="HACHEVERSO" className="w-full h-full object-cover" />
                         </div>
                         <div className="flex flex-col">
                             <h1 className="font-display text-xl md:text-2xl tracking-[0.1em] text-ink uppercase leading-none">INGRESADOS</h1>
-                            <div className="flex items-center gap-4 mt-1">
-                                <span className="text-[9px] md:text-[10px] font-bold tracking-[0.2em] uppercase text-brand-blue/80 hidden md:inline-block">INVENTORY & TRACKING</span>
-                                <span className="text-[9px] md:text-[10px] font-bold tracking-[0.2em] uppercase text-muted">BODEGA ACTIVA</span>
+                            <div className="flex items-center gap-2 mt-1.5">
+                                <span className="text-[9px] font-black tracking-[0.18em] uppercase text-muted">by</span>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src="/logo-hacheverso.png" alt="HACHEVERSO" className="h-5 md:h-6 w-auto" />
+                                <span className="text-[9px] md:text-[10px] font-black tracking-[0.18em] uppercase text-muted hidden md:inline-block ml-2">BODEGA ACTIVA</span>
                             </div>
                         </div>
                     </div>
@@ -2167,31 +2169,31 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
                             <div className="col-span-2 bg-brand-green rounded-3xl p-5 flex flex-col justify-between shadow-[0_12px_32px_rgba(91,202,45,0.35)] min-h-[120px]">
                                 <span className="text-[10px] font-black uppercase tracking-[0.14em] text-ink/70">Inversión total (COP)</span>
-                                <span className="font-display text-3xl xl:text-4xl text-ink leading-none">{formatMoney(stats.totalCop, 'COP')}</span>
+                                <span className="font-tech text-3xl xl:text-4xl text-ink leading-none">{formatMoney(stats.totalCop, 'COP')}</span>
                                 {stats.totalUsd > 0 && (
                                     <span className="text-[10px] font-bold text-ink/60 uppercase tracking-wider mt-1">+ {formatMoney(stats.totalUsd, 'USD')} en sesiones USD</span>
                                 )}
                             </div>
                             <div className="glass rounded-3xl p-5 flex flex-col justify-between min-h-[120px]">
                                 <span className="text-[10px] font-black uppercase tracking-[0.14em] text-muted">Unidades ingresadas</span>
-                                <span className="font-display text-3xl text-ink leading-none">{stats.totalUnidades.toLocaleString('es-CO')}</span>
+                                <span className="font-tech text-3xl text-ink leading-none">{stats.totalUnidades.toLocaleString('es-CO')}</span>
                             </div>
                             <div className="glass rounded-3xl p-5 flex flex-col justify-between min-h-[120px]">
                                 <span className="text-[10px] font-black uppercase tracking-[0.14em] text-muted">Ingresos guardados</span>
-                                <span className="font-display text-3xl text-ink leading-none">{stats.numSesiones}</span>
+                                <span className="font-tech text-3xl text-ink leading-none">{stats.numSesiones}</span>
                                 <span className="text-[10px] font-bold text-brand-green-ink uppercase tracking-wider">{stats.facturadas} facturados en Holded</span>
                             </div>
                             <div className="glass rounded-3xl p-5 flex flex-col justify-between min-h-[120px]">
                                 <span className="text-[10px] font-black uppercase tracking-[0.14em] text-muted">Productos en catálogo</span>
-                                <span className="font-display text-3xl text-ink leading-none">{stats.numProductos.toLocaleString('es-CO')}</span>
+                                <span className="font-tech text-3xl text-ink leading-none">{stats.numProductos.toLocaleString('es-CO')}</span>
                             </div>
                             <div className="glass rounded-3xl p-5 flex flex-col justify-between min-h-[120px]">
                                 <span className="text-[10px] font-black uppercase tracking-[0.14em] text-muted">Costo prom. / unidad</span>
-                                <span className="font-display text-2xl text-ink leading-none">{formatMoney(Math.round(stats.costoPromedioUnidad), 'COP')}</span>
+                                <span className="font-tech text-2xl text-ink leading-none">{formatMoney(Math.round(stats.costoPromedioUnidad), 'COP')}</span>
                             </div>
                             <div className="glass rounded-3xl p-5 flex flex-col justify-between min-h-[120px]">
                                 <span className="text-[10px] font-black uppercase tracking-[0.14em] text-muted">Proveedores</span>
-                                <span className="font-display text-3xl text-ink leading-none">{stats.numProveedores}</span>
+                                <span className="font-tech text-3xl text-ink leading-none">{stats.numProveedores}</span>
                             </div>
                         </div>
 
@@ -2339,7 +2341,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                     <div key={session.id} className="glass rounded-3xl p-6 flex flex-col gap-4 hover:shadow-[0_14px_40px_rgba(58,82,218,0.16)] transition-all group">
                                         <div className="flex justify-between items-start gap-3">
                                             <div className="min-w-0">
-                                                <h3 className="font-display text-xl text-ink tracking-[0.04em] leading-none mb-2 truncate" title={session.lote}>{session.lote}</h3>
+                                                <h3 className="font-tech text-xl text-ink tracking-[0.02em] leading-none mb-2 truncate" title={session.lote}>{session.lote}</h3>
                                                 <p className="text-muted text-[11px] font-mono">{session.fecha}</p>
                                             </div>
                                             {session.proveedor && (
@@ -2353,15 +2355,15 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                         <div className="grid grid-cols-2 gap-3 my-1">
                                             <div className="bg-white/60 border border-white/80 rounded-2xl px-4 py-3 flex flex-col shadow-sm">
                                                 <span className="text-[9px] font-black uppercase tracking-[0.14em] text-muted">Unidades</span>
-                                                <span className="font-display text-2xl text-ink leading-none mt-1.5">{session.totalUnidades}</span>
+                                                <span className="font-tech text-2xl text-ink leading-none mt-1.5">{session.totalUnidades}</span>
                                             </div>
                                             <div className="bg-white/60 border border-white/80 rounded-2xl px-4 py-3 flex flex-col shadow-sm">
                                                 <span className="text-[9px] font-black uppercase tracking-[0.14em] text-muted">Escaneos</span>
-                                                <span className="font-display text-2xl text-ink leading-none mt-1.5">{session.totalRecords}</span>
+                                                <span className="font-tech text-2xl text-ink leading-none mt-1.5">{session.totalRecords}</span>
                                             </div>
                                             <div className="col-span-2 bg-brand-green/10 border border-brand-green/40 rounded-2xl px-4 py-3 flex items-center justify-between gap-2">
                                                 <span className="text-[9px] font-black uppercase tracking-[0.14em] text-brand-green-ink/80">Valor ({session.monedaBase})</span>
-                                                <span className="font-display text-xl text-brand-green-ink leading-none whitespace-nowrap">
+                                                <span className="font-tech text-xl text-brand-green-ink leading-none whitespace-nowrap">
                                                     {formatMoney(
                                                         session.monedaBase === 'COP'
                                                             ? session.costoTotalCOP
@@ -2606,7 +2608,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                     <div className="absolute top-0 right-0 w-64 h-64 bg-ink/5 rounded-full transform translate-x-1/3 -translate-y-1/3 group-hover:bg-ink/10 transition-colors"></div>
                                     <span className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-70 relative z-10">Total Ingresado</span>
                                     <div className="flex items-baseline gap-2 relative z-10 mt-auto">
-                                        <span className="text-6xl font-black leading-none drop-shadow-md">{totalUnits}</span>
+                                        <span className="font-tech text-6xl leading-none drop-shadow-md">{totalUnits}</span>
                                         <span className="text-lg font-black uppercase tracking-widest leading-none drop-shadow-md opacity-80">UND</span>
                                     </div>
                                 </div>

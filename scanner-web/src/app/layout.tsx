@@ -11,10 +11,22 @@ const poppins = localFont({
     variable: "--font-poppins",
 });
 
+const walsheim = localFont({
+    src: "./fonts/GTWalsheimPro-Medium.ttf",
+    weight: "500",
+    variable: "--font-walsheim",
+});
+
 const britanica = localFont({
     src: "./fonts/Britanica-SemiExpanded-Heavy.ttf",
     weight: "900",
     variable: "--font-britanica",
+});
+
+const codepro = localFont({
+    src: "./fonts/CodePro-Black.otf",
+    weight: "900",
+    variable: "--font-codepro",
 });
 
 const geistMono = Geist_Mono({
@@ -23,7 +35,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-    title: "INGRESADOS | Control de Inventario",
+    title: "INGRESADOS by HACHEVERSO | Control de Inventario",
     description: "Plataforma inteligente de escaneo y control de bodega",
 };
 
@@ -35,7 +47,7 @@ export default function RootLayout({
     return (
         <html lang="es">
             <body
-                className={`${poppins.variable} ${britanica.variable} ${geistMono.variable} antialiased`}
+                className={`${poppins.variable} ${walsheim.variable} ${britanica.variable} ${codepro.variable} ${geistMono.variable} antialiased`}
             >
                 {children}
             </body>
