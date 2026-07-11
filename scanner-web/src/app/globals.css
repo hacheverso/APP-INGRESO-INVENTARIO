@@ -50,6 +50,38 @@ body {
   background-color: var(--color-page);
 }
 
+/* Fondo con manchas de color de marca (verde ácido + azul real) para el efecto glass */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(42% 36% at 12% 8%, rgba(91, 202, 45, 0.20) 0%, transparent 70%),
+    radial-gradient(38% 32% at 92% 12%, rgba(58, 82, 218, 0.14) 0%, transparent 70%),
+    radial-gradient(50% 42% at 78% 96%, rgba(91, 202, 45, 0.16) 0%, transparent 70%),
+    radial-gradient(36% 30% at 6% 88%, rgba(58, 82, 218, 0.10) 0%, transparent 70%);
+}
+
+/* Tarjeta glassmorphism: translúcida, con blur y borde de luz */
+.glass {
+  background: rgba(255, 255, 255, 0.58);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 8px 32px rgba(23, 28, 20, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* Variante más opaca para modales y contenido denso */
+.glass-strong {
+  background: rgba(255, 255, 255, 0.82);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+  backdrop-filter: blur(26px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 18px 50px rgba(23, 28, 20, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
