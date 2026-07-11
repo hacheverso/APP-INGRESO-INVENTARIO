@@ -54,11 +54,15 @@ export default function LoginPage() {
             <div className="w-full max-w-md relative z-10">
                 {/* Logo / Brand */}
                 <div className="text-center mb-10">
-                    <div className="inline-flex items-center justify-center w-20 h-20 mb-6 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(91,202,45,0.35)] border border-brand-green/30">
-                        <img src="/logo.png" alt="INGRESADOS" className="w-full h-full object-cover" />
+                    <div className="inline-flex items-center justify-center w-24 h-24 mb-5 rounded-full overflow-hidden shadow-[0_0_45px_rgba(91,202,45,0.5)]">
+                        <img src="/logo-mascot.png" alt="HACHEVERSO" className="w-full h-full object-cover" />
                     </div>
                     <h1 className="font-display text-3xl tracking-[0.12em] text-ink uppercase">INGRESADOS</h1>
-                    <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-muted mt-2">INVENTORY & TRACKING SYSTEM</p>
+                    <div className="flex items-center justify-center gap-2 mt-3">
+                        <span className="text-[10px] font-black tracking-[0.18em] uppercase text-muted">by</span>
+                        <img src="/logo-hacheverso.png" alt="HACHEVERSO" className="h-8 w-auto" />
+                    </div>
+                    <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-muted mt-3">INVENTORY & TRACKING SYSTEM</p>
                 </div>
 
                 {/* Login Card */}

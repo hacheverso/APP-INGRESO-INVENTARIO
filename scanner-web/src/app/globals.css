@@ -38,10 +38,13 @@
 
 }
 
-/* Tipografía de marca (referencias a variables de next/font → requiere inline) */
+/* Tipografía de marca (referencias a variables de next/font → requiere inline)
+   Stack HACHEVERSO: Britanica (titulares) · GT Walsheim (interfaz) ·
+   Code Pro Black (números héroe) · Poppins (respaldo/negritas) */
 @theme inline {
   --font-display: var(--font-britanica), "Arial Black", system-ui, sans-serif;
-  --font-sans: var(--font-poppins), system-ui, sans-serif;
+  --font-sans: var(--font-walsheim), var(--font-poppins), system-ui, sans-serif;
+  --font-tech: var(--font-codepro), var(--font-britanica), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
