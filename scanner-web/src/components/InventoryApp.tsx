@@ -922,6 +922,15 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                 qtyRef.current?.select();
                 return;
             }
+            // Seguridad: una cantidad enorme casi siempre es un código de barras
+            // escaneado por error en el campo de cantidad (modo masivo sin cambiar a serial)
+            if (parsedQty > 10000) {
+                showToast(`⚠️ Cantidad rechazada (${parsedQty.toLocaleString('es-CO')}). Parece un código de barras escaneado en el campo de CANTIDAD. Máximo permitido: 10.000 unidades.`, 'error');
+                triggerFeedback('error');
+                setQty("");
+                qtyRef.current?.focus();
+                return;
+            }
             finalTipo = "MASIVO";
         }
 
@@ -2801,7 +2810,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                 )}
                                 {mode === 'MASSIVE' && (
                                     <div className="flex-1 flex gap-4">
-                                        <input ref={qtyRef} type="number" value={qty} onChange={(e) => setQty(e.target.value)} onWheel={(e) => e.currentTarget.blur()} onKeyDown={(e) => handleKeyDown(e, 'qty')} min="1" className="w-[120px] bg-field border border-line rounded-2xl px-5 py-4 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-sans text-2xl font-black text-center text-ink placeholder-faint" placeholder="1" />
+                                        <input ref={qtyRef} type="number" value={qty} onChange={(e) => setQty(e.target.value)} onWheel={(e) => e.currentTarget.blur()} onKeyDown={(e) => handleKeyDown(e, 'qty')} min="1" max="10000" className="w-[120px] bg-field border border-line rounded-2xl px-5 py-4 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-sans text-2xl font-black text-center text-ink placeholder-faint" placeholder="1" />
                                         <button onClick={addRecord} className="flex-1 bg-brand-blue hover:bg-brand-blue-hover text-white font-bold py-4 px-4 rounded-2xl transition-all text-sm uppercase tracking-widest shadow-lg shadow-brand-blue/20 flex items-center justify-center gap-2">
                                             <PackageCheck size={20} /> Ingresar
                                         </button>
