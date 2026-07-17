@@ -100,6 +100,14 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, error: 'La sesión no tiene registros para facturar' }, { status: 400 });
         }
 
+        // Nombre/SKU/imagen ACTUALES del catálogo (no los congelados en el ingreso),
+        // para que un producto renombrado se facture con su nombre nuevo.
+        const catalogProducts = await prisma.product.findMany({
+            where: { userId: authSession.userId, upc: { in: Array.from(grouped.keys()) } },
+            select: { upc: true, name: true, sku: true, image: true }
+        });
+        const catalog = new Map(catalogProducts.map(p => [p.upc, p]));
+
         // 1. Resolver proveedor (buscar o crear)
         const supplier = await findOrCreateSupplier(providerName);
 
@@ -109,13 +117,18 @@ export async function POST(req: Request) {
         const items: HoldedInvoiceItem[] = [];
 
         for (const line of grouped.values()) {
+            const cat = catalog.get(line.upc);
+            const nombre = (cat?.name || line.nombre || `Producto ${line.upc}`);
+            const sku = (cat?.sku || line.sku || line.upc);
+            const imagen = (cat?.image || line.imagen || '');
+
             let productId = barcodeMap.get(line.upc);
             if (!productId) {
                 const created = await createHoldedProduct({
-                    name: line.nombre || `Producto ${line.upc}`,
+                    name: nombre,
                     barcode: line.upc,
-                    sku: line.sku || null,
-                    imageUrl: line.imagen || null
+                    sku: sku || null,
+                    imageUrl: imagen || null
                 });
                 if (created.ok && created.holdedId) {
                     productId = created.holdedId;
@@ -125,8 +138,8 @@ export async function POST(req: Request) {
             }
             const unitPriceCop = line.units > 0 ? Math.round((line.totalCop / line.units) * 100) / 100 : 0;
             items.push({
-                name: line.nombre || line.upc,
-                sku: line.sku || line.upc,
+                name: nombre,
+                sku,
                 units: line.units,
                 unitPriceCop,
                 productId
