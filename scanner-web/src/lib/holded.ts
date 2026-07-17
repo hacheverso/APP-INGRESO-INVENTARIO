@@ -193,6 +193,18 @@ export async function findOrCreateSupplier(name: string): Promise<{ id: string; 
     return { id: data.id, created: true };
 }
 
+/** Diagnóstico: devuelve TODOS los productos de Holded que tienen un código de barras dado. */
+export async function findHoldedProductsByBarcode(barcode: string): Promise<Array<{ id: string; name: string; sku: string; barcode: string }>> {
+    const apiKey = process.env.HOLDED_API_KEY;
+    if (!apiKey) throw new Error('HOLDED_API_KEY no está configurada en el servidor');
+
+    const products = await holdedGetList(apiKey, '/products');
+    const target = String(barcode).trim();
+    return products
+        .filter(p => String(p.barcode || '').trim() === target)
+        .map(p => ({ id: p.id, name: p.name || '', sku: String(p.sku || ''), barcode: String(p.barcode || '') }));
+}
+
 /** Devuelve un mapa barcode → productId con todos los productos de Holded. */
 export async function getHoldedProductsByBarcode(): Promise<Map<string, string>> {
     const apiKey = process.env.HOLDED_API_KEY;
