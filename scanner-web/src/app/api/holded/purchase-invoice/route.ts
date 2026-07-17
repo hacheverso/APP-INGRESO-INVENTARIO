@@ -104,7 +104,7 @@ export async function POST(req: Request) {
         // para que un producto renombrado se facture con su nombre nuevo.
         const catalogProducts = await prisma.product.findMany({
             where: { userId: authSession.userId, upc: { in: Array.from(grouped.keys()) } },
-            select: { upc: true, name: true, sku: true, image: true }
+            select: { upc: true, name: true, sku: true, image: true, holdedId: true }
         });
         const catalog = new Map(catalogProducts.map(p => [p.upc, p]));
 
@@ -122,7 +122,10 @@ export async function POST(req: Request) {
             const sku = (cat?.sku || line.sku || line.upc);
             const imagen = (cat?.image || line.imagen || '');
 
-            let productId = barcodeMap.get(line.upc);
+            // Preferir el id de Holded que la app guardó para ESTE producto (canónico);
+            // así, aunque en Holded haya duplicados con el mismo código de barras, la
+            // línea se vincula al producto correcto en vez de al primero que aparezca.
+            let productId = cat?.holdedId || barcodeMap.get(line.upc);
             if (!productId) {
                 const created = await createHoldedProduct({
                     name: nombre,
