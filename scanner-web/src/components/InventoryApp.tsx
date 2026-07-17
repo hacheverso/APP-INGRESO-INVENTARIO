@@ -1446,6 +1446,10 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         setBatchName(session.lote);
         setProveedor(session.proveedor || '');
         setCurrency(session.monedaBase);
+        // Restaurar la TRM guardada en los registros para no pisarla con la global por defecto.
+        // En sesiones COP la tasa vive en cada registro; tomamos la de un registro representativo.
+        const sessionTrm = session.records.find(r => r.TasaCambio > 1)?.TasaCambio;
+        if (sessionTrm) setExchangeRate(String(sessionTrm));
         setEditingSessionId(session.id); // Track original ID for re-save
         navigateTo('SCANNER');
 
