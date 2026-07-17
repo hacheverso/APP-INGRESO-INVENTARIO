@@ -679,14 +679,14 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         }
 
         const newProd: Product = { UPC, NOMBRE: NOMBRE.trim(), SKU: SKU.trim(), IMAGEN, CATEGORIA: (CATEGORIA || '').trim(), LastCost: 0 };
-        // Solo se crea en Holded cuando el producto es nuevo; editar no debe duplicarlo
+        // Tanto crear como editar sincronizan con Holded (el backend crea o actualiza sin duplicar)
         const isNewProduct = !productDB[UPC];
 
         try {
             const res = await fetch('/api/products', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...newProd, syncHolded: isNewProduct })
+                body: JSON.stringify({ ...newProd, syncHolded: true })
             });
             const data = await res.json();
 
@@ -698,9 +698,10 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                 setShowNewProductModal(false);
 
                 if (data.holded?.ok) {
-                    showToast(data.holded.imageUploaded
-                        ? "Producto creado en la nube y en Holded (con imagen)."
-                        : "Producto creado en la nube y en Holded (sin imagen).", 'success');
+                    const enHolded = data.holded.action === 'updated' ? 'actualizado en Holded' : 'creado en Holded';
+                    showToast(isNewProduct
+                        ? `Producto ${enHolded}${data.holded.imageUploaded ? ' (con imagen)' : ''}.`
+                        : `Producto actualizado en la nube y ${enHolded}.`, 'success');
                 } else if (data.holded) {
                     showToast(`Producto guardado en la nube, pero Holded falló: ${data.holded.error}`, 'error');
                 } else {
