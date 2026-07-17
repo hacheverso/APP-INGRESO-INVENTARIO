@@ -9,6 +9,7 @@ export interface HoldedSyncResult {
     ok: boolean;
     holdedId?: string;
     imageUploaded?: boolean;
+    action?: 'created' | 'updated';
     error?: string;
 }
 
@@ -63,7 +64,67 @@ export async function createHoldedProduct(params: {
             imageUploaded = await uploadHoldedProductImage(apiKey, holdedId, params.imageUrl);
         }
 
-        return { ok: true, holdedId, imageUploaded };
+        return { ok: true, holdedId, imageUploaded, action: 'created' };
+    } catch (error: any) {
+        const detail = error?.name === 'TimeoutError' ? 'timeout de conexión' : (error?.message || 'error de red');
+        return { ok: false, error: `No se pudo conectar con Holded: ${detail}` };
+    }
+}
+
+/**
+ * Actualiza un producto existente en Holded (nombre, SKU, código de barras) sin
+ * crear duplicados. Ubica el producto por su holdedId; si no lo tenemos guardado,
+ * lo busca por código de barras. Si de plano no existe en Holded, lo crea.
+ * Nunca lanza.
+ */
+export async function updateHoldedProduct(params: {
+    holdedId?: string | null;
+    barcode: string;
+    name: string;
+    sku?: string | null;
+    imageUrl?: string | null;
+}): Promise<HoldedSyncResult> {
+    const apiKey = process.env.HOLDED_API_KEY;
+    if (!apiKey) {
+        return { ok: false, error: 'HOLDED_API_KEY no está configurada en el servidor' };
+    }
+
+    try {
+        // Resolver el id del producto en Holded
+        let holdedId = params.holdedId || undefined;
+        if (!holdedId) {
+            const map = await getHoldedProductsByBarcode();
+            holdedId = map.get(params.barcode);
+        }
+
+        // Si no existe en Holded, crearlo en lugar de actualizar
+        if (!holdedId) {
+            return await createHoldedProduct({
+                name: params.name,
+                barcode: params.barcode,
+                sku: params.sku,
+                imageUrl: params.imageUrl,
+            });
+        }
+
+        const res = await fetch(`${HOLDED_API_BASE}/products/${holdedId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'key': apiKey },
+            body: JSON.stringify({
+                name: params.name,
+                barcode: params.barcode,
+                ...(params.sku ? { sku: params.sku } : {}),
+            }),
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+
+        const data: any = await res.json().catch(() => null);
+        if (!res.ok || (data && data.status === 0)) {
+            const detail = data?.info || data?.message || `HTTP ${res.status}`;
+            return { ok: false, error: `Holded rechazó la actualización: ${detail}` };
+        }
+
+        return { ok: true, holdedId, action: 'updated' };
     } catch (error: any) {
         const detail = error?.name === 'TimeoutError' ? 'timeout de conexión' : (error?.message || 'error de red');
         return { ok: false, error: `No se pudo conectar con Holded: ${detail}` };

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSession } from '@/lib/auth';
 import { fetchSheetsProducts } from '@/lib/sheets';
-import { createHoldedProduct, isHoldedConfigured } from '@/lib/holded';
+import { createHoldedProduct, updateHoldedProduct, isHoldedConfigured } from '@/lib/holded';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,12 +53,14 @@ export async function GET() {
             const sheetsData = sheetsResult.data as Record<string, any>;
             for (const [key, sheetProduct] of Object.entries(sheetsData)) {
                 if (productDB[key]) {
-                    // Merge: Sheets data enriches/overrides DB data
+                    // Merge: la BD manda en la identidad del producto (nombre, SKU, imagen,
+                    // categoría) porque es lo que el usuario cura y edita en la app; el Sheets
+                    // solo rellena cuando la BD no tiene el dato, y aporta los campos vivos
+                    // (stock, precio, margen...) que la BD no maneja.
                     productDB[key] = {
                         ...productDB[key],
-                        NOMBRE: sheetProduct.NOMBRE || productDB[key].NOMBRE,
-                        SKU: sheetProduct.SKU || productDB[key].SKU,
-                        // La imagen de la BD manda (es la que el usuario cura); Sheets solo es respaldo
+                        NOMBRE: productDB[key].NOMBRE || sheetProduct.NOMBRE,
+                        SKU: productDB[key].SKU || sheetProduct.SKU,
                         IMAGEN: productDB[key].IMAGEN || sheetProduct.IMAGEN,
                         LastCost: productDB[key].LastCost || 0, // DB is source of truth for LastCost (USD)
                         // Extended fields from Sheets
@@ -131,6 +133,12 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, error: 'UPC and NOMBRE are required' }, { status: 400 });
         }
 
+        // Saber si ya existía (y su id en Holded) antes de guardar, para crear vs. actualizar
+        const existing = await prisma.product.findUnique({
+            where: { upc_userId: { upc: UPC, userId: session.userId } },
+            select: { holdedId: true }
+        });
+
         const product = await prisma.product.upsert({
             where: { upc_userId: { upc: UPC, userId: session.userId } },
             update: {
@@ -151,17 +159,22 @@ export async function POST(req: Request) {
             }
         });
 
-        // Sync a Holded solo cuando el frontend lo pide (creación desde el modal de producto nuevo).
+        // Sync a Holded cuando el frontend lo pide (crear o editar desde el modal de producto).
         // Best-effort: un fallo en Holded no revierte el guardado local.
         let holded = null;
         if (syncHolded) {
             if (isHoldedConfigured()) {
-                holded = await createHoldedProduct({
-                    name: NOMBRE,
-                    barcode: UPC,
-                    sku: SKU || null,
-                    imageUrl: IMAGEN || null
-                });
+                holded = existing
+                    ? await updateHoldedProduct({ holdedId: existing.holdedId, barcode: UPC, name: NOMBRE, sku: SKU || null, imageUrl: IMAGEN || null })
+                    : await createHoldedProduct({ name: NOMBRE, barcode: UPC, sku: SKU || null, imageUrl: IMAGEN || null });
+
+                // Guardar el id de Holded si es nuevo (para futuras ediciones sin buscar por barcode)
+                if (holded?.ok && holded.holdedId && holded.holdedId !== existing?.holdedId) {
+                    await prisma.product.update({
+                        where: { upc_userId: { upc: UPC, userId: session.userId } },
+                        data: { holdedId: holded.holdedId }
+                    }).catch(() => {});
+                }
             } else {
                 holded = { ok: false, error: 'HOLDED_API_KEY no está configurada en el servidor' };
             }
