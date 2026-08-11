@@ -219,7 +219,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         }
 
         // Cargar Backup de Escaneos
-        const saved = localStorage.getItem('scanner_backup');
+        const saved = safeGetItem('scanner_backup');
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
@@ -274,7 +274,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         fetchRemoteData();
 
         // Cargar Historial de Proveedores
-        const savedProviders = localStorage.getItem('scanner_proveedores');
+        const savedProviders = safeGetItem('scanner_proveedores');
         if (savedProviders) {
             try {
                 const parsedProviders = JSON.parse(savedProviders);
@@ -284,7 +284,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
             }
         }
 
-        const savedCategorias = localStorage.getItem('scanner_categorias');
+        const savedCategorias = safeGetItem('scanner_categorias');
         if (savedCategorias) {
             try {
                 const parsedCategorias = JSON.parse(savedCategorias);
@@ -302,41 +302,59 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         }
     }, [isClient, showNewProductModal, view]);
 
+    // Guardado seguro en localStorage: setItem LANZA si la cuota está llena (sesiones
+    // grandes) o en modo privado, y una excepción en un efecto tumba toda la app.
+    const safeSetItem = (key: string, value: string) => {
+        try {
+            localStorage.setItem(key, value);
+        } catch (e) {
+            console.warn(`localStorage lleno o no disponible; se omite el respaldo local de ${key}`, e);
+        }
+    };
+    const safeGetItem = (key: string): string | null => {
+        try { return localStorage.getItem(key); } catch { return null; }
+    };
+
     // Manejo de LocalStorage Backup
     useEffect(() => {
         if (isClient && records.length > 0) {
-            localStorage.setItem('scanner_backup', JSON.stringify(records));
+            safeSetItem('scanner_backup', JSON.stringify(records));
         } else if (isClient) {
-            localStorage.removeItem('scanner_backup');
+            try { localStorage.removeItem('scanner_backup'); } catch { /* no-op */ }
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [records, isClient]);
 
     // Manejo de Base de Datos LocalStorage
     useEffect(() => {
         if (isClient && Object.keys(productDB).length > 0) {
-            localStorage.setItem('scanner_product_db', JSON.stringify(productDB));
+            safeSetItem('scanner_product_db', JSON.stringify(productDB));
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [productDB, isClient]);
 
     // Manejo Persistencia Historial de Sesiones
     useEffect(() => {
         if (isClient) {
-            localStorage.setItem('scanner_history_sessions', JSON.stringify(savedSessions));
+            safeSetItem('scanner_history_sessions', JSON.stringify(savedSessions));
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [savedSessions, isClient]);
 
     // Manejo Persistencia Proveedores
     useEffect(() => {
         if (isClient && listaProveedores.length > 0) {
-            localStorage.setItem('scanner_proveedores', JSON.stringify(listaProveedores));
+            safeSetItem('scanner_proveedores', JSON.stringify(listaProveedores));
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [listaProveedores, isClient]);
 
     // Manejo Persistencia Categorías creadas por el usuario
     useEffect(() => {
         if (isClient && categoriasList.length > 0) {
-            localStorage.setItem('scanner_categorias', JSON.stringify(categoriasList));
+            safeSetItem('scanner_categorias', JSON.stringify(categoriasList));
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [categoriasList, isClient]);
 
     // Retroactividad: Si cambia la moneda global o la TRM, actualizar todos los registros activos en la sesión actual.
@@ -457,7 +475,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
             showToast("Iniciando Migración... Sincronizando catálogo", "info");
 
             // 1. Migrar Catálogo de Productos
-            const savedDB = localStorage.getItem('scanner_product_db');
+            const savedDB = safeGetItem('scanner_product_db');
             if (savedDB) {
                 const parsedDB = JSON.parse(savedDB);
                 const productsArray = Object.values(parsedDB) as Product[];
@@ -480,7 +498,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
 
             // 2. Migrar Sesiones Históricas
             showToast("Migrando Historial de Sesiones...", "info");
-            const savedHistory = localStorage.getItem('scanner_history_sessions');
+            const savedHistory = safeGetItem('scanner_history_sessions');
             if (savedHistory) {
                 const parsedHistory = JSON.parse(savedHistory) as HistorySession[];
 
@@ -1596,7 +1614,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
             const provName = (s.proveedor || 'Sin proveedor').trim() || 'Sin proveedor';
             const prov = porProveedor.get(provName) || { sesiones: new Set<string>(), unidades: 0, cop: 0 };
             prov.sesiones.add(s.id);
-            s.records.forEach(r => {
+            (s.records || []).forEach(r => {
                 const copVal = esCop ? (r.CostoTotalCOP || 0) : 0;
                 prov.unidades += r.Cantidad || 0;
                 prov.cop += copVal;
@@ -2414,7 +2432,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                     {formatMoney(
                                                         session.monedaBase === 'COP'
                                                             ? session.costoTotalCOP
-                                                            : session.records.reduce((acc, r) => acc + (r.Moneda === 'USD' ? (r.CostoUnitario * r.Cantidad) : (r.TasaCambio > 0 ? r.CostoTotalCOP / r.TasaCambio : 0)), 0),
+                                                            : (session.records || []).reduce((acc, r) => acc + (r.Moneda === 'USD' ? ((r.CostoUnitario || 0) * (r.Cantidad || 0)) : (r.TasaCambio > 0 ? (r.CostoTotalCOP || 0) / r.TasaCambio : 0)), 0),
                                                         session.monedaBase
                                                     )}
                                                 </span>
