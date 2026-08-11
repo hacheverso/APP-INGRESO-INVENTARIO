@@ -86,8 +86,26 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
 
     // Cada vista tiene URL propia: al navegar se actualiza la ruta y al recargar se conserva la vista
     const VIEW_PATHS: Record<AppView, string> = { SCANNER: '/', HISTORY: '/historial', PRODUCTS: '/productos', STATS: '/estadisticas' };
+    // Traer las sesiones frescas del servidor (clave para trabajar desde varios dispositivos)
+    const refreshSessions = async (): Promise<HistorySession[] | null> => {
+        try {
+            const res = await fetch('/api/sessions');
+            const data = await res.json();
+            if (data.success && Array.isArray(data.data)) {
+                setSavedSessions(data.data);
+                return data.data as HistorySession[];
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    };
+
     const navigateTo = (v: AppView) => {
         setView(v);
+        // Al entrar al historial o estadísticas, refrescar en segundo plano lo guardado
+        // desde otros dispositivos (la lista solo se cargaba al abrir la app)
+        if (v === 'HISTORY' || v === 'STATS') refreshSessions();
         if (typeof window !== 'undefined' && window.location.pathname !== VIEW_PATHS[v]) {
             window.history.pushState({ view: v }, '', VIEW_PATHS[v]);
         }
@@ -1438,23 +1456,38 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         }
     };
 
-    const loadSessionForEditing = (session: HistorySession) => {
+    const loadSessionForEditing = async (session: HistorySession) => {
         if (records.length > 0) {
-            if (!confirm("Tienes una sesión activa en progreso. Si abres otra, esta sesión será reemplazada temporalmente y pausada. ¿Continuar?")) return;
+            if (!confirm("Tienes una sesión activa en progreso. Si abres otra, esta sesión será reemplazada temporalmente y pausada. ¿Continuar?")) {
+                showToast("Reapertura cancelada: conservas tu sesión activa.", 'info');
+                return;
+            }
         }
 
-        setRecords(session.records);
-        setBatchName(session.lote);
-        setProveedor(session.proveedor || '');
-        setCurrency(session.monedaBase);
+        // Pedir la versión FRESCA al servidor en este momento: si el ingreso se guardó
+        // desde otro dispositivo, la copia local puede estar vieja o incompleta.
+        let target = session;
+        const fresh = await refreshSessions();
+        const freshMatch = fresh?.find(s => s.id === session.id);
+        if (freshMatch) target = freshMatch;
+
+        if (!target.records || target.records.length === 0) {
+            showToast("No se pudieron descargar los registros de este ingreso. Verifica tu conexión y vuelve a intentar.", 'error');
+            return;
+        }
+
+        setRecords(target.records);
+        setBatchName(target.lote);
+        setProveedor(target.proveedor || '');
+        setCurrency(target.monedaBase);
         // Restaurar la TRM guardada en los registros para no pisarla con la global por defecto.
         // En sesiones COP la tasa vive en cada registro; tomamos la de un registro representativo.
-        const sessionTrm = session.records.find(r => r.TasaCambio > 1)?.TasaCambio;
+        const sessionTrm = target.records.find(r => r.TasaCambio > 1)?.TasaCambio;
         if (sessionTrm) setExchangeRate(String(sessionTrm));
-        setEditingSessionId(session.id); // Track original ID for re-save
+        setEditingSessionId(target.id); // Track original ID for re-save
         navigateTo('SCANNER');
 
-        showToast(`Sesión reabierta para edición: ${session.lote}`, "info");
+        showToast(`Sesión reabierta para edición: ${target.lote} (${target.records.length} registros)`, "info");
     };
 
     const deleteHistorySession = (id: string, e: React.MouseEvent) => {
