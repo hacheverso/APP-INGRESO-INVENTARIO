@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 type ScanMode = 'UPC_SERIAL' | 'MASSIVE';
 type Currency = 'COP' | 'USD';
-export type AppView = 'SCANNER' | 'HISTORY' | 'PRODUCTS' | 'STATS'; // Vistas con URL propia
+export type AppView = 'SCANNER' | 'HISTORY' | 'PRODUCTS' | 'STATS' | 'CRUCE'; // Vistas con URL propia
 
 interface HistorySession {
     id: string; // Timestamp
@@ -86,7 +86,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const [currentUser, setCurrentUser] = useState<{ id: string; email: string; name?: string } | null>(null);
 
     // Cada vista tiene URL propia: al navegar se actualiza la ruta y al recargar se conserva la vista
-    const VIEW_PATHS: Record<AppView, string> = { SCANNER: '/', HISTORY: '/historial', PRODUCTS: '/productos', STATS: '/estadisticas' };
+    const VIEW_PATHS: Record<AppView, string> = { SCANNER: '/', HISTORY: '/historial', PRODUCTS: '/productos', STATS: '/estadisticas', CRUCE: '/cruce' };
     // Traer las sesiones frescas del servidor (clave para trabajar desde varios dispositivos)
     const refreshSessions = async (): Promise<HistorySession[] | null> => {
         try {
@@ -107,6 +107,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         // Al entrar al historial o estadísticas, refrescar en segundo plano lo guardado
         // desde otros dispositivos (la lista solo se cargaba al abrir la app)
         if (v === 'HISTORY' || v === 'STATS') refreshSessions();
+        if (v === 'CRUCE') setMetaTotalInput(metaTotal !== null ? String(metaTotal) : '');
         if (typeof window !== 'undefined' && window.location.pathname !== VIEW_PATHS[v]) {
             window.history.pushState({ view: v }, '', VIEW_PATHS[v]);
         }
@@ -300,6 +301,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                 if (parsedMeta && typeof parsedMeta === 'object') {
                     if (typeof parsedMeta.total === 'number') setMetaTotal(parsedMeta.total);
                     if (parsedMeta.items && typeof parsedMeta.items === 'object') setMetaItems(parsedMeta.items);
+                    if (typeof parsedMeta.text === 'string') setMetaText(parsedMeta.text);
                 }
             } catch (e) { console.error("Error cargando meta", e); }
         }
@@ -381,12 +383,12 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     useEffect(() => {
         if (!isClient) return;
         if (metaTotal !== null || Object.keys(metaItems).length > 0) {
-            safeSetItem('scanner_meta', JSON.stringify({ total: metaTotal, items: metaItems }));
+            safeSetItem('scanner_meta', JSON.stringify({ total: metaTotal, items: metaItems, text: metaText }));
         } else {
             try { localStorage.removeItem('scanner_meta'); } catch { /* no-op */ }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [metaTotal, metaItems, isClient]);
+    }, [metaTotal, metaItems, metaText, isClient]);
 
     // Retroactividad: Si cambia la moneda global o la TRM, actualizar todos los registros activos en la sesión actual.
     // USD = puro dólares (sin conversión). COP = ingreso en USD con conversión a pesos vía TRM.
@@ -1650,6 +1652,29 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const noEsperados = Object.keys(metaItems).length > 0 ? Object.keys(escaneadoPorUpc).filter(u => !(u in metaItems)) : [];
     const cruceCompletos = cruceRows.filter(r => r.escaneado >= r.esperado).length;
 
+    // ====== Aplicar / quitar la meta del ingreso (usada por el modal y la vista Cruce) ======
+    const aplicarMeta = () => {
+        const items: Record<string, number> = {};
+        metaText.split(/\n+/).forEach(line => {
+            const t = line.trim();
+            if (!t) return;
+            const m = t.match(/^(\S+?)[\s,;\t]+(\d{1,6})$/);
+            if (m) items[m[1]] = (items[m[1]] || 0) + parseInt(m[2], 10);
+            else if (/^\S+$/.test(t)) items[t] = (items[t] || 0) + 1;
+        });
+        const itemsTotal = Object.values(items).reduce((a, b) => a + b, 0);
+        const total = parseInt(metaTotalInput, 10);
+        setMetaItems(items);
+        setMetaTotal(!isNaN(total) && total > 0 ? total : (itemsTotal > 0 ? itemsTotal : null));
+        setShowMetaModal(false);
+        showToast(itemsTotal > 0 ? `Meta configurada: ${Object.keys(items).length} productos, ${itemsTotal} unidades esperadas.` : 'Meta de unidades configurada.', 'success');
+    };
+    const quitarMeta = () => {
+        setMetaTotal(null); setMetaItems({}); setMetaText(''); setMetaTotalInput('');
+        setShowMetaModal(false);
+        showToast('Meta del ingreso eliminada.', 'info');
+    };
+
     // ====== Alerta de costo atípico (±15% vs. el último costo guardado) ======
     const checkCostoAtipico = (upc: string) => {
         const reg = records.find(r => r.UPC === upc);
@@ -2152,7 +2177,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                         </div>
                         <div className="p-4 bg-field flex justify-between gap-3 border-t border-line">
                             <button
-                                onClick={() => { setMetaTotal(null); setMetaItems({}); setMetaText(''); setMetaTotalInput(''); setShowMetaModal(false); showToast('Meta del ingreso eliminada.', 'info'); }}
+                                onClick={quitarMeta}
                                 className="px-4 py-2 font-bold text-red-600 hover:bg-red-500/10 rounded-lg text-xs uppercase tracking-wider transition-colors"
                             >
                                 Quitar meta
@@ -2160,22 +2185,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                             <div className="flex gap-2">
                                 <button onClick={() => setShowMetaModal(false)} className="px-5 py-2 font-bold text-faint hover:text-ink transition-colors">Cancelar</button>
                                 <button
-                                    onClick={() => {
-                                        const items: Record<string, number> = {};
-                                        metaText.split(/\n+/).forEach(line => {
-                                            const t = line.trim();
-                                            if (!t) return;
-                                            const m = t.match(/^(\S+?)[\s,;\t]+(\d{1,6})$/);
-                                            if (m) items[m[1]] = (items[m[1]] || 0) + parseInt(m[2], 10);
-                                            else if (/^\S+$/.test(t)) items[t] = (items[t] || 0) + 1;
-                                        });
-                                        const itemsTotal = Object.values(items).reduce((a, b) => a + b, 0);
-                                        const total = parseInt(metaTotalInput, 10);
-                                        setMetaItems(items);
-                                        setMetaTotal(!isNaN(total) && total > 0 ? total : (itemsTotal > 0 ? itemsTotal : null));
-                                        setShowMetaModal(false);
-                                        showToast(itemsTotal > 0 ? `Meta configurada: ${Object.keys(items).length} productos, ${itemsTotal} unidades esperadas.` : 'Meta de unidades configurada.', 'success');
-                                    }}
+                                    onClick={aplicarMeta}
                                     className="flex gap-2 px-6 py-2 bg-brand-green hover:bg-brand-green-bright text-ink font-black rounded-lg items-center"
                                 >
                                     <Target size={16} /> Aplicar meta
@@ -2318,6 +2328,9 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                             <button onClick={() => navigateTo('SCANNER')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all ${view === 'SCANNER' ? 'bg-brand-blue/20 text-brand-blue' : 'text-muted hover:text-ink-soft hover:bg-ink/5'}`} title="Volver al Escáner">
                                 <ScanLine size={14} /> Escáner
                             </button>
+                            <button onClick={() => navigateTo('CRUCE')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all border-l border-line ${view === 'CRUCE' ? 'bg-brand-blue/20 text-brand-blue' : 'text-muted hover:text-ink-soft hover:bg-ink/5'}`} title="Cruce de mercancía: lo esperado vs. lo que llega">
+                                <Target size={14} /> Cruce
+                            </button>
                             <button onClick={() => navigateTo('PRODUCTS')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all border-l border-line ${view === 'PRODUCTS' ? 'bg-brand-blue/20 text-brand-blue' : 'text-muted hover:text-ink-soft hover:bg-ink/5'}`} title="Catálogo de Productos">
                                 <PackageCheck size={14} /> Productos
                             </button>
@@ -2372,7 +2385,155 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
             {/* Container Principal Condicionado a la Vista */}
             <main className="flex-1 flex flex-col lg:flex-row gap-6 py-6 px-4 md:px-6 2xl:px-10 w-full min-h-0 overflow-hidden">
 
-                {view === 'STATS' ? (
+                {view === 'CRUCE' ? (
+                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
+                        <div className="flex items-center gap-3 text-ink mb-2">
+                            <Target size={24} className="text-brand-blue" />
+                            <h2 className="font-display text-2xl tracking-[0.08em] uppercase">Cruce de Mercancía</h2>
+                        </div>
+
+                        <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 pb-12">
+                            {/* Configuración de lo esperado */}
+                            <div className="glass rounded-3xl p-6 flex flex-col gap-5 xl:col-span-2 self-start">
+                                <div>
+                                    <h3 className="font-black text-ink text-sm uppercase tracking-wider mb-1">1. Define lo que esperas</h3>
+                                    <p className="text-xs text-muted">Cuando te avisen un envío, registra aquí lo que debe llegar. A medida que escaneen en la pestaña Escáner, el cruce se actualiza solo. <span className="font-bold text-ink-soft">Solo informa, nunca bloquea el ingreso.</span></p>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-wider mb-2 text-muted">Total de unidades esperadas</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={metaTotalInput}
+                                        onChange={e => setMetaTotalInput(e.target.value)}
+                                        className="w-full bg-white/70 border border-line rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-blue focus:bg-white transition-all text-ink placeholder-faint font-tech text-xl"
+                                        placeholder="Ej: 370"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-wider mb-2 text-muted">Lista por producto (opcional)</label>
+                                    <textarea
+                                        value={metaText}
+                                        onChange={e => setMetaText(e.target.value)}
+                                        rows={9}
+                                        className="w-full bg-white/70 border border-line rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-blue focus:bg-white transition-all text-ink placeholder-faint font-mono text-xs"
+                                        placeholder={"Pega la lista que te enviaron: un UPC por línea con su cantidad.\n\n0810116380008 5\n195949573040 12\n\n(si no pones cantidad, cuenta 1)"}
+                                    />
+                                </div>
+                                <div className="flex gap-3">
+                                    <button onClick={aplicarMeta} className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-brand-green hover:bg-brand-green-bright text-ink font-black rounded-xl text-xs uppercase tracking-widest transition-colors">
+                                        <Target size={16} /> Aplicar meta
+                                    </button>
+                                    {(metaTotal !== null || Object.keys(metaItems).length > 0) && (
+                                        <button onClick={quitarMeta} className="px-4 py-3 font-bold text-red-600 hover:bg-red-500/10 rounded-xl text-xs uppercase tracking-wider border border-red-500/30 transition-colors">
+                                            Quitar
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Avance en vivo */}
+                            <div className="xl:col-span-3 flex flex-col gap-6">
+                                {metaTotal === null && Object.keys(metaItems).length === 0 ? (
+                                    <div className="glass rounded-3xl p-10 flex flex-col items-center justify-center text-center opacity-60 min-h-[280px]">
+                                        <Target size={48} className="text-faint mb-4" />
+                                        <p className="text-muted font-bold uppercase tracking-widest text-sm">Sin meta configurada</p>
+                                        <p className="text-xs text-faint mt-2 max-w-sm">Define el total esperado o pega la lista del envío y aquí verás en vivo qué llegó completo, qué falta y qué llegó de más.</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Progreso total */}
+                                        <div className={`rounded-3xl p-6 flex flex-col gap-3 transition-colors duration-500 ${metaTotal !== null && totalUnits >= metaTotal ? 'bg-brand-green text-ink shadow-[0_12px_32px_rgba(91,202,45,0.35)]' : 'glass text-ink'}`}>
+                                            <div className="flex items-end justify-between gap-4 flex-wrap">
+                                                <div>
+                                                    <span className="text-[10px] font-black uppercase tracking-[0.14em] opacity-70">Avance del ingreso</span>
+                                                    <div className="flex items-baseline gap-2 mt-1">
+                                                        <span className="font-tech text-5xl leading-none">{totalUnits}</span>
+                                                        {metaTotal !== null && <span className="font-tech text-2xl leading-none opacity-60">/ {metaTotal}</span>}
+                                                        <span className="text-xs font-black uppercase tracking-wider opacity-70 ml-1">und</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2 flex-wrap">
+                                                    {Object.keys(metaItems).length > 0 && (
+                                                        <span className="text-[10px] font-black uppercase tracking-wider bg-white/60 border border-line text-ink px-3 py-1.5 rounded-lg">{cruceCompletos}/{cruceRows.length} productos completos</span>
+                                                    )}
+                                                    {metaTotal !== null && totalUnits > metaTotal && (
+                                                        <span className="text-[10px] font-black uppercase tracking-wider bg-amber-500 text-ink px-3 py-1.5 rounded-lg">+{totalUnits - metaTotal} de más</span>
+                                                    )}
+                                                    {noEsperados.length > 0 && (
+                                                        <span className="text-[10px] font-black uppercase tracking-wider bg-red-500/10 border border-red-500/40 text-red-700 px-3 py-1.5 rounded-lg">{noEsperados.length} no esperados</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {metaTotal !== null && (
+                                                <div className="h-2.5 bg-ink/10 rounded-full overflow-hidden">
+                                                    <div className={`h-full rounded-full transition-all duration-300 ${totalUnits >= metaTotal ? 'bg-ink/70' : 'bg-brand-blue'}`} style={{ width: `${Math.min(100, (totalUnits / Math.max(1, metaTotal)) * 100)}%` }} />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Tabla del cruce por producto */}
+                                        {Object.keys(metaItems).length > 0 && (
+                                            <div className="glass rounded-3xl overflow-hidden">
+                                                <div className="px-6 py-4 border-b border-line flex items-center justify-between">
+                                                    <h3 className="font-black text-ink text-sm uppercase tracking-wider">Detalle del cruce</h3>
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted">{cruceRows.length} productos esperados</span>
+                                                </div>
+                                                <table className="w-full text-left text-sm">
+                                                    <thead>
+                                                        <tr className="text-muted uppercase tracking-wider text-[10px] border-b border-line">
+                                                            <th className="px-6 py-3 font-black">Producto</th>
+                                                            <th className="px-4 py-3 font-black text-right">Esperado</th>
+                                                            <th className="px-4 py-3 font-black text-right">Escaneado</th>
+                                                            <th className="px-6 py-3 font-black text-right">Estado</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-line/60">
+                                                        {cruceRows.map(row => {
+                                                            const falta = row.esperado - row.escaneado;
+                                                            return (
+                                                                <tr key={row.upc} className="hover:bg-ink/5 transition-colors">
+                                                                    <td className="px-6 py-3">
+                                                                        <span className="font-bold text-ink block truncate max-w-[340px]" title={row.upc}>{row.nombre}</span>
+                                                                        <span className="text-[10px] font-mono text-muted">{row.upc}</span>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right font-mono font-bold text-ink-soft">{row.esperado}</td>
+                                                                    <td className="px-4 py-3 text-right font-mono font-black text-ink">{row.escaneado}</td>
+                                                                    <td className="px-6 py-3 text-right">
+                                                                        {falta > 0 ? (
+                                                                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-500/10 border border-amber-500/40 px-2.5 py-1 rounded-md">faltan {falta}</span>
+                                                                        ) : falta === 0 ? (
+                                                                            <span className="text-[10px] font-black uppercase tracking-wider text-brand-green-ink bg-brand-green/10 border border-brand-green/40 px-2.5 py-1 rounded-md">✓ completo</span>
+                                                                        ) : (
+                                                                            <span className="text-[10px] font-black uppercase tracking-wider text-red-700 bg-red-500/10 border border-red-500/40 px-2.5 py-1 rounded-md">+{-falta} de más</span>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                        {noEsperados.map(u => (
+                                                            <tr key={u} className="hover:bg-ink/5 transition-colors bg-red-500/5">
+                                                                <td className="px-6 py-3">
+                                                                    <span className="font-bold text-red-700 block truncate max-w-[340px]">{productDB[u]?.NOMBRE || 'Producto desconocido'}</span>
+                                                                    <span className="text-[10px] font-mono text-muted">{u}</span>
+                                                                </td>
+                                                                <td className="px-4 py-3 text-right font-mono font-bold text-faint">—</td>
+                                                                <td className="px-4 py-3 text-right font-mono font-black text-ink">{escaneadoPorUpc[u]}</td>
+                                                                <td className="px-6 py-3 text-right">
+                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-red-700 bg-red-500/10 border border-red-500/40 px-2.5 py-1 rounded-md">no esperado</span>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                ) : view === 'STATS' ? (
                     <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
                         <div className="flex items-center gap-3 text-ink mb-2">
                             <BarChart3 size={24} className="text-brand-blue" />
