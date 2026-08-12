@@ -30,6 +30,7 @@ interface Product {
     SKU: string;
     IMAGEN: string;
     LastCost?: number; // Historial del último costo registrado para calcular fluctuación
+    LastCostAt?: string | null; // Fecha del último ingreso con costo
     // Extended fields from Google Sheets (live data)
     STOCK?: number;
     PRECIO?: number;
@@ -2969,6 +2970,11 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                             {(() => {
                                                                 const currentInputCost = Number(group.Records[0]?.CostoUnitario) || 0;
                                                                 const lastSavedCost = productDB[group.UPC]?.LastCost || 0;
+                                                                const lastAtRaw = productDB[group.UPC]?.LastCostAt;
+                                                                const lastAt = lastAtRaw ? new Date(lastAtRaw) : null;
+                                                                const fechaTxt = lastAt && !isNaN(lastAt.getTime())
+                                                                    ? ` · ${String(lastAt.getDate()).padStart(2, '0')}/${String(lastAt.getMonth() + 1).padStart(2, '0')}/${lastAt.getFullYear()}`
+                                                                    : '';
 
                                                                 // No hay historial: primer ingreso
                                                                 if (lastSavedCost === 0) {
@@ -2983,7 +2989,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                                 if (currentInputCost === 0) {
                                                                     return (
                                                                         <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-amber-700 bg-amber-500/10 px-3 py-1 rounded-lg border border-amber-500/30">
-                                                                            Último: USD ${lastSavedCost}
+                                                                            Último: USD ${lastSavedCost}{fechaTxt}
                                                                         </span>
                                                                     );
                                                                 }
@@ -2994,19 +3000,19 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                                 if (diff > 0) {
                                                                     return (
                                                                         <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-red-700 bg-red-500/10 px-3 py-1 rounded-lg border border-red-500/30">
-                                                                            Último: USD ${lastSavedCost} <ArrowUpRight size={12} strokeWidth={3} /> +{pctChange.toFixed(0)}%
+                                                                            Último: USD ${lastSavedCost}{fechaTxt} <ArrowUpRight size={12} strokeWidth={3} /> +{pctChange.toFixed(0)}%
                                                                         </span>
                                                                     );
                                                                 } else if (diff < 0) {
                                                                     return (
                                                                         <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-brand-green-ink bg-brand-green/10 px-3 py-1 rounded-lg border border-brand-green/40">
-                                                                            Último: USD ${lastSavedCost} <ArrowDownRight size={12} strokeWidth={3} /> {pctChange.toFixed(0)}%
+                                                                            Último: USD ${lastSavedCost}{fechaTxt} <ArrowDownRight size={12} strokeWidth={3} /> {pctChange.toFixed(0)}%
                                                                         </span>
                                                                     );
                                                                 } else {
                                                                     return (
                                                                         <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-muted bg-field px-3 py-1 rounded-lg border border-line">
-                                                                            Último: USD ${lastSavedCost} — Igual
+                                                                            Último: USD ${lastSavedCost}{fechaTxt} — Igual
                                                                         </span>
                                                                     );
                                                                 }
