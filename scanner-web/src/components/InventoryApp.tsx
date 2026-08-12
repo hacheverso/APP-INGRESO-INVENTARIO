@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { BarChart3, Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning, Search, LogOut, RefreshCw, Link2, Pencil, Check, ExternalLink, ClipboardPaste } from 'lucide-react';
+import { BarChart3, Target, Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning, Search, LogOut, RefreshCw, Link2, Pencil, Check, ExternalLink, ClipboardPaste } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { v4 as uuidv4 } from 'uuid';
@@ -137,6 +137,14 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const [newProductForm, setNewProductForm] = useState({ UPC: '', NOMBRE: '', SKU: '', IMAGEN: '', CATEGORIA: '' });
     const [productSearchTerm, setProductSearchTerm] = useState("");
     const [unknownUpc, setUnknownUpc] = useState<string | null>(null); // Product-not-found prompt
+
+    // Meta del ingreso (cruce de mercancía): total esperado y/o lista UPC → cantidad.
+    // Solo informa, nunca restringe.
+    const [metaTotal, setMetaTotal] = useState<number | null>(null);
+    const [metaItems, setMetaItems] = useState<Record<string, number>>({});
+    const [showMetaModal, setShowMetaModal] = useState(false);
+    const [metaTotalInput, setMetaTotalInput] = useState('');
+    const [metaText, setMetaText] = useState('');
 
     // Categorías de producto: las creadas por el usuario + las ya usadas en el catálogo
     const [categoriasList, setCategoriasList] = useState<string[]>([]);
@@ -285,6 +293,17 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
             }
         }
 
+        const savedMeta = safeGetItem('scanner_meta');
+        if (savedMeta) {
+            try {
+                const parsedMeta = JSON.parse(savedMeta);
+                if (parsedMeta && typeof parsedMeta === 'object') {
+                    if (typeof parsedMeta.total === 'number') setMetaTotal(parsedMeta.total);
+                    if (parsedMeta.items && typeof parsedMeta.items === 'object') setMetaItems(parsedMeta.items);
+                }
+            } catch (e) { console.error("Error cargando meta", e); }
+        }
+
         const savedCategorias = safeGetItem('scanner_categorias');
         if (savedCategorias) {
             try {
@@ -357,6 +376,17 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [categoriasList, isClient]);
+
+    // Persistencia de la meta del ingreso (sobrevive recargas mientras se escanea)
+    useEffect(() => {
+        if (!isClient) return;
+        if (metaTotal !== null || Object.keys(metaItems).length > 0) {
+            safeSetItem('scanner_meta', JSON.stringify({ total: metaTotal, items: metaItems }));
+        } else {
+            try { localStorage.removeItem('scanner_meta'); } catch { /* no-op */ }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [metaTotal, metaItems, isClient]);
 
     // Retroactividad: Si cambia la moneda global o la TRM, actualizar todos los registros activos en la sesión actual.
     // USD = puro dólares (sin conversión). COP = ingreso en USD con conversión a pesos vía TRM.
@@ -943,6 +973,12 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                 serialRef.current?.select();
                 return;
             }
+            // Aviso (sin bloquear): el serial ya había entrado en un ingreso guardado
+            const sesionPrevia = savedSessions.find(s => (s.records || []).some(r => r.Serial === serialVal));
+            if (sesionPrevia) {
+                showToast(`⚠️ Ojo: el serial ${serialVal} ya entró en el lote ${sesionPrevia.lote} (${sesionPrevia.fecha}). Se registra de todas formas.`, 'error');
+                if (isAudioEnabled) playBeep('duplicate');
+            }
             finalTipo = "SERIAL";
             parsedQty = 1;
         } else {
@@ -1440,6 +1476,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                 setRecords([]); // Vaciamos la sesión activa localmente solo si guardó con éxito en la nube
                 setEditingSessionId(null); // Reset editing state
                 setBatchName(nextLoteNumber([formattedNewSession, ...savedSessions])); // Siguiente consecutivo del día para el próximo lote
+                setMetaTotal(null); setMetaItems({}); setMetaText(''); setMetaTotalInput(''); // La meta era de este ingreso; se limpia al guardarlo
                 localStorage.removeItem('scanner_backup'); // Limpiamos backup local
                 navigateTo('HISTORY');
                 showToast(editingSessionId ? "Sesión actualizada en Neon DB" : "Sesión Guardada permanentemente en Neon DB", "success");
@@ -1591,6 +1628,42 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     // Contadores Globales Financieros
     const totalUnits = records.reduce((acc, current) => acc + current.Cantidad, 0);
     const globalTotalCOP = records.reduce((acc, current) => acc + current.CostoTotalCOP, 0);
+
+    // ====== Modo "ponerle costos": grupos que aún no tienen costo ======
+    const gruposSinCosto = groupedRecords.filter(g => !(Number(g.Records[0]?.CostoUnitario) > 0));
+    const saltarAlSiguienteSinCosto = () => {
+        const target = groupedRecords.findIndex(g => !(Number(g.Records[0]?.CostoUnitario) > 0));
+        if (target === -1) return;
+        setExpandedGroups(prev => ({ ...prev, [groupedRecords[target].UPC]: true }));
+        setTimeout(() => {
+            const el = document.querySelector(`[data-cost-index="${target}"]`) as HTMLInputElement | null;
+            if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); el.select(); }
+        }, 120);
+    };
+
+    // ====== Cruce de mercancía (meta del ingreso) — informativo ======
+    const escaneadoPorUpc: Record<string, number> = {};
+    records.forEach(r => { escaneadoPorUpc[r.UPC] = (escaneadoPorUpc[r.UPC] || 0) + (r.Cantidad || 0); });
+    const cruceRows = Object.entries(metaItems)
+        .map(([u, esperado]) => ({ upc: u, esperado, escaneado: escaneadoPorUpc[u] || 0, nombre: productDB[u]?.NOMBRE || u }))
+        .sort((a, b) => (a.escaneado >= a.esperado ? 1 : 0) - (b.escaneado >= b.esperado ? 1 : 0));
+    const noEsperados = Object.keys(metaItems).length > 0 ? Object.keys(escaneadoPorUpc).filter(u => !(u in metaItems)) : [];
+    const cruceCompletos = cruceRows.filter(r => r.escaneado >= r.esperado).length;
+
+    // ====== Alerta de costo atípico (±15% vs. el último costo guardado) ======
+    const checkCostoAtipico = (upc: string) => {
+        const reg = records.find(r => r.UPC === upc);
+        const costo = Number(reg?.CostoUnitario) || 0;
+        const last = productDB[upc]?.LastCost || 0;
+        if (costo <= 0 || last <= 0) return;
+        const pct = ((costo - last) / last) * 100;
+        if (Math.abs(pct) < 15) return;
+        const lastAtRaw = productDB[upc]?.LastCostAt;
+        const f = lastAtRaw ? new Date(lastAtRaw) : null;
+        const ftxt = f && !isNaN(f.getTime()) ? ` (${String(f.getDate()).padStart(2, '0')}/${String(f.getMonth() + 1).padStart(2, '0')}/${f.getFullYear()})` : '';
+        showToast(`⚠️ Costo atípico: digitaste USD $${costo} y la última vez${ftxt} fue USD $${last} (${pct > 0 ? '+' : ''}${pct.toFixed(0)}%). Verifica.`, 'error');
+        if (isAudioEnabled) playBeep('warning');
+    };
 
     // ================= ESTADÍSTICAS (calculadas de las sesiones guardadas) =================
     const stats = (() => {
@@ -2031,6 +2104,81 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                 >
                                     <Check size={14} />
                                     Guardar y Sincronizar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal: Meta del ingreso (cruce de mercancía) */}
+            {showMetaModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/45 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowMetaModal(false)}>
+                    <div className="glass-strong rounded-3xl w-[560px] max-w-full overflow-hidden animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                        <div className="px-6 py-4 border-b border-line flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-brand-blue/10 border border-brand-blue/30 flex items-center justify-center">
+                                <Target size={20} className="text-brand-blue" />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="font-black text-ink text-sm uppercase tracking-wider">Meta del ingreso</h3>
+                                <p className="text-[10px] text-muted font-bold tracking-widest uppercase">Cruce de mercancía — solo informa, no restringe</p>
+                            </div>
+                            <button onClick={() => setShowMetaModal(false)} className="text-faint hover:text-ink transition-colors"><X size={20} /></button>
+                        </div>
+                        <div className="p-6 flex flex-col gap-5">
+                            <div>
+                                <label className="block text-xs font-bold uppercase tracking-wider mb-2 text-muted">Total de unidades esperadas</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={metaTotalInput}
+                                    onChange={e => setMetaTotalInput(e.target.value)}
+                                    className="w-full bg-field border border-line rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-blue focus:bg-white transition-all text-ink placeholder-faint font-tech text-xl"
+                                    placeholder="Ej: 370"
+                                />
+                                <p className="text-[10px] text-faint mt-1.5">El contador azul mostrará el avance: 352 / 370.</p>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold uppercase tracking-wider mb-2 text-muted">Cruce por producto (opcional)</label>
+                                <textarea
+                                    value={metaText}
+                                    onChange={e => setMetaText(e.target.value)}
+                                    rows={6}
+                                    className="w-full bg-field border border-line rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-blue focus:bg-white transition-all text-ink placeholder-faint font-mono text-xs"
+                                    placeholder={"Pega la lista que te enviaron: un UPC por línea con su cantidad.\nEj:\n0810116380008 5\n195949573040 12\n(si no pones cantidad, cuenta 1)"}
+                                />
+                                <p className="text-[10px] text-faint mt-1.5">Verás en el panel derecho qué está completo, qué falta y qué llegó sin estar en la lista.</p>
+                            </div>
+                        </div>
+                        <div className="p-4 bg-field flex justify-between gap-3 border-t border-line">
+                            <button
+                                onClick={() => { setMetaTotal(null); setMetaItems({}); setMetaText(''); setMetaTotalInput(''); setShowMetaModal(false); showToast('Meta del ingreso eliminada.', 'info'); }}
+                                className="px-4 py-2 font-bold text-red-600 hover:bg-red-500/10 rounded-lg text-xs uppercase tracking-wider transition-colors"
+                            >
+                                Quitar meta
+                            </button>
+                            <div className="flex gap-2">
+                                <button onClick={() => setShowMetaModal(false)} className="px-5 py-2 font-bold text-faint hover:text-ink transition-colors">Cancelar</button>
+                                <button
+                                    onClick={() => {
+                                        const items: Record<string, number> = {};
+                                        metaText.split(/\n+/).forEach(line => {
+                                            const t = line.trim();
+                                            if (!t) return;
+                                            const m = t.match(/^(\S+?)[\s,;\t]+(\d{1,6})$/);
+                                            if (m) items[m[1]] = (items[m[1]] || 0) + parseInt(m[2], 10);
+                                            else if (/^\S+$/.test(t)) items[t] = (items[t] || 0) + 1;
+                                        });
+                                        const itemsTotal = Object.values(items).reduce((a, b) => a + b, 0);
+                                        const total = parseInt(metaTotalInput, 10);
+                                        setMetaItems(items);
+                                        setMetaTotal(!isNaN(total) && total > 0 ? total : (itemsTotal > 0 ? itemsTotal : null));
+                                        setShowMetaModal(false);
+                                        showToast(itemsTotal > 0 ? `Meta configurada: ${Object.keys(items).length} productos, ${itemsTotal} unidades esperadas.` : 'Meta de unidades configurada.', 'success');
+                                    }}
+                                    className="flex gap-2 px-6 py-2 bg-brand-green hover:bg-brand-green-bright text-ink font-black rounded-lg items-center"
+                                >
+                                    <Target size={16} /> Aplicar meta
                                 </button>
                             </div>
                         </div>
@@ -2669,14 +2817,44 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
 
                             {/* Top Split Section: Total (Left) + Currency (Center) + Controls (Right) */}
                             <div className="flex gap-4 min-h-[120px] shrink-0">
-                                {/* Total Ingresado Blue Card */}
-                                <div className="flex-1 min-w-0 bg-brand-blue rounded-3xl p-5 text-white flex flex-col justify-between shadow-[0_10px_30px_rgba(58,82,218,0.25)] relative overflow-hidden group">
+                                {/* Total Ingresado — con meta del ingreso opcional (cruce) */}
+                                <div className={`flex-1 min-w-0 rounded-3xl p-5 flex flex-col justify-between relative overflow-hidden group transition-colors duration-500 ${
+                                    metaTotal !== null && totalUnits >= metaTotal
+                                        ? 'bg-brand-green text-ink shadow-[0_10px_30px_rgba(91,202,45,0.4)]'
+                                        : 'bg-brand-blue text-white shadow-[0_10px_30px_rgba(58,82,218,0.25)]'
+                                }`}>
                                     <div className="absolute top-0 right-0 w-64 h-64 bg-ink/5 rounded-full transform translate-x-1/3 -translate-y-1/3 group-hover:bg-ink/10 transition-colors"></div>
-                                    <span className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-70 relative z-10">Total Ingresado</span>
-                                    <div className="flex items-baseline gap-2 relative z-10 mt-auto">
-                                        <span className="font-tech text-6xl leading-none drop-shadow-md">{totalUnits}</span>
-                                        <span className="text-lg font-black uppercase tracking-widest leading-none drop-shadow-md opacity-80">UND</span>
+                                    <div className="flex items-start justify-between relative z-10">
+                                        <span className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-70">Total Ingresado</span>
+                                        <button
+                                            onClick={() => { setMetaTotalInput(metaTotal !== null ? String(metaTotal) : ''); setShowMetaModal(true); }}
+                                            className="opacity-60 hover:opacity-100 transition-opacity"
+                                            title={metaTotal !== null ? `Meta: ${metaTotal} unidades — clic para editar` : 'Definir meta del ingreso (cruce de mercancía)'}
+                                        >
+                                            <Target size={16} />
+                                        </button>
                                     </div>
+                                    <div className="flex items-baseline gap-2 relative z-10 mt-auto">
+                                        {metaTotal !== null ? (
+                                            <>
+                                                <span className="font-tech text-4xl md:text-5xl leading-none drop-shadow-md">{totalUnits}</span>
+                                                <span className="font-tech text-2xl leading-none opacity-70">/ {metaTotal}</span>
+                                                {totalUnits > metaTotal && (
+                                                    <span className="text-[10px] font-black uppercase tracking-wider bg-amber-500 text-ink px-2 py-0.5 rounded-md">+{totalUnits - metaTotal} de más</span>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span className="font-tech text-6xl leading-none drop-shadow-md">{totalUnits}</span>
+                                                <span className="text-lg font-black uppercase tracking-widest leading-none drop-shadow-md opacity-80">UND</span>
+                                            </>
+                                        )}
+                                    </div>
+                                    {metaTotal !== null && (
+                                        <div className="relative z-10 mt-2 h-1.5 bg-ink/15 rounded-full overflow-hidden">
+                                            <div className="h-full bg-white/90 rounded-full transition-all duration-300" style={{ width: `${Math.min(100, (totalUnits / Math.max(1, metaTotal)) * 100)}%` }} />
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* CURRENCY SELECTOR — Prominent Card */}
@@ -2885,7 +3063,16 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                 <h2 className="text-ink font-black tracking-[0.2em] text-sm flex items-center gap-3">
                                     <History size={18} className="text-muted" /> HISTORIAL RECIENTE
                                 </h2>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap justify-end">
+                                    {records.length > 0 && (gruposSinCosto.length > 0 ? (
+                                        <button onClick={saltarAlSiguienteSinCosto} className="flex items-center gap-2 text-amber-700 bg-amber-500/10 border border-amber-500/40 hover:bg-amber-500/20 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors" title="Ir al siguiente producto sin costo">
+                                            <DollarSign size={13} /> Faltan {gruposSinCosto.length} por costear →
+                                        </button>
+                                    ) : (
+                                        <span className="flex items-center gap-2 text-brand-green-ink bg-brand-green/10 border border-brand-green/40 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">
+                                            <CheckCircle size={13} /> Todo costeado
+                                        </span>
+                                    ))}
                                     {records.length > 0 && (
                                         <button onClick={saveCurrentSessionToHistory} className="flex items-center gap-2 text-white transition-all px-5 py-2 bg-brand-blue hover:bg-brand-blue-hover rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-[0_4px_14px_rgba(58,82,218,0.35)] hover:shadow-[0_6px_20px_rgba(58,82,218,0.45)] active:scale-95">
                                             <Save size={14} /> Guardar
@@ -2896,6 +3083,43 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                     </button>
                                 </div>
                             </div>
+
+                            {/* Cruce de mercancía (informativo) */}
+                            {Object.keys(metaItems).length > 0 && (
+                                <div className="px-6 py-4 border-b border-line/70 bg-brand-blue/5 shrink-0 max-h-[240px] overflow-y-auto custom-scrollbar">
+                                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                                        <span className="text-[10px] font-black uppercase tracking-[0.14em] text-ink flex items-center gap-2"><Target size={13} className="text-brand-blue" /> Cruce de mercancía</span>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
+                                            {cruceCompletos}/{cruceRows.length} completos{noEsperados.length > 0 ? ` · ${noEsperados.length} no esperados` : ''}
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-col gap-1.5">
+                                        {cruceRows.map(row => {
+                                            const falta = row.esperado - row.escaneado;
+                                            return (
+                                                <div key={row.upc} className="flex items-center justify-between gap-3 text-xs">
+                                                    <span className="font-bold text-ink-soft truncate flex-1" title={row.upc}>{row.nombre}</span>
+                                                    <span className="font-mono font-black text-ink whitespace-nowrap">{row.escaneado}/{row.esperado}</span>
+                                                    {falta > 0 ? (
+                                                        <span className="text-[9px] font-black uppercase tracking-wider text-amber-700 bg-amber-500/10 border border-amber-500/40 px-2 py-0.5 rounded-md whitespace-nowrap">faltan {falta}</span>
+                                                    ) : falta === 0 ? (
+                                                        <span className="text-[9px] font-black uppercase tracking-wider text-brand-green-ink bg-brand-green/10 border border-brand-green/40 px-2 py-0.5 rounded-md whitespace-nowrap">✓ completo</span>
+                                                    ) : (
+                                                        <span className="text-[9px] font-black uppercase tracking-wider text-red-700 bg-red-500/10 border border-red-500/40 px-2 py-0.5 rounded-md whitespace-nowrap">+{-falta} de más</span>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                        {noEsperados.map(u => (
+                                            <div key={u} className="flex items-center justify-between gap-3 text-xs">
+                                                <span className="font-bold text-red-700 truncate flex-1" title={u}>{productDB[u]?.NOMBRE || u}</span>
+                                                <span className="font-mono font-black text-ink whitespace-nowrap">{escaneadoPorUpc[u]}</span>
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-red-700 bg-red-500/10 border border-red-500/40 px-2 py-0.5 rounded-md whitespace-nowrap">no esperado</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Dynamic List */}
                             <div className="flex-1 overflow-y-auto min-h-0 p-4 md:p-6 space-y-4 pb-8 custom-scrollbar">
@@ -2943,6 +3167,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                                     className="bg-transparent text-brand-green-ink font-mono font-black outline-none w-[120px] text-base md:text-lg [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                                     value={group.Records[0]?.CostoUnitario === 0 && !group.Records[0].CostoTotalCOP ? "" : group.Records[0]?.CostoUnitario}
                                                                     onChange={(e) => handleUpdateUpcCost(group.UPC, e.target.value)}
+                                                                    onBlur={() => checkCostoAtipico(group.UPC)}
                                                                     onWheel={(e) => e.currentTarget.blur()}
                                                                     onKeyDown={(e) => {
                                                                         if (e.key === 'Enter') {
@@ -2988,9 +3213,9 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                                 // Hay historial pero no se ha ingresado costo aún
                                                                 if (currentInputCost === 0) {
                                                                     return (
-                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-amber-700 bg-amber-500/10 px-3 py-1 rounded-lg border border-amber-500/30">
-                                                                            Último: USD ${lastSavedCost}{fechaTxt}
-                                                                        </span>
+                                                                        <button type="button" onClick={() => { handleUpdateUpcCost(group.UPC, String(lastSavedCost)); showToast(`Costo aplicado: USD $${lastSavedCost}`, 'success'); }} title="Clic para usar este costo" className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-amber-700 bg-amber-500/10 hover:bg-amber-500/25 px-3 py-1 rounded-lg border border-amber-500/30 cursor-pointer transition-colors">
+                                                                            Último: USD ${lastSavedCost}{fechaTxt} ⤶
+                                                                        </button>
                                                                     );
                                                                 }
 
@@ -2999,21 +3224,21 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
 
                                                                 if (diff > 0) {
                                                                     return (
-                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-red-700 bg-red-500/10 px-3 py-1 rounded-lg border border-red-500/30">
+                                                                        <button type="button" onClick={() => { handleUpdateUpcCost(group.UPC, String(lastSavedCost)); showToast(`Costo aplicado: USD $${lastSavedCost}`, 'success'); }} title="Clic para usar el costo anterior" className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-red-700 bg-red-500/10 hover:bg-red-500/20 px-3 py-1 rounded-lg border border-red-500/30 cursor-pointer transition-colors">
                                                                             Último: USD ${lastSavedCost}{fechaTxt} <ArrowUpRight size={12} strokeWidth={3} /> +{pctChange.toFixed(0)}%
-                                                                        </span>
+                                                                        </button>
                                                                     );
                                                                 } else if (diff < 0) {
                                                                     return (
-                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-brand-green-ink bg-brand-green/10 px-3 py-1 rounded-lg border border-brand-green/40">
+                                                                        <button type="button" onClick={() => { handleUpdateUpcCost(group.UPC, String(lastSavedCost)); showToast(`Costo aplicado: USD $${lastSavedCost}`, 'success'); }} title="Clic para usar el costo anterior" className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-brand-green-ink bg-brand-green/10 hover:bg-brand-green/25 px-3 py-1 rounded-lg border border-brand-green/40 cursor-pointer transition-colors">
                                                                             Último: USD ${lastSavedCost}{fechaTxt} <ArrowDownRight size={12} strokeWidth={3} /> {pctChange.toFixed(0)}%
-                                                                        </span>
+                                                                        </button>
                                                                     );
                                                                 } else {
                                                                     return (
-                                                                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-muted bg-field px-3 py-1 rounded-lg border border-line">
+                                                                        <button type="button" onClick={() => { handleUpdateUpcCost(group.UPC, String(lastSavedCost)); showToast(`Costo aplicado: USD $${lastSavedCost}`, 'success'); }} title="Clic para usar el costo anterior" className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 text-muted bg-field hover:bg-line px-3 py-1 rounded-lg border border-line cursor-pointer transition-colors">
                                                                             Último: USD ${lastSavedCost}{fechaTxt} — Igual
-                                                                        </span>
+                                                                        </button>
                                                                     );
                                                                 }
                                                             })()}
