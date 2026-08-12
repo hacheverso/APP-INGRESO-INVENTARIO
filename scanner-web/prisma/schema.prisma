@@ -29,6 +29,7 @@ model Product {
   category  String   @default("")
   holdedId  String?
   lastCost  Float    @default(0)
+  lastCostAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -44,7 +44,8 @@ export async function GET() {
                 NOMBRE: p.name,
                 IMAGEN: p.image || "",
                 CATEGORIA: p.category || "",
-                LastCost: p.lastCost || 0
+                LastCost: p.lastCost || 0,
+                LastCostAt: p.lastCostAt ? p.lastCostAt.toISOString() : null
             };
         });
 
@@ -108,7 +109,7 @@ export async function POST(req: Request) {
                         name: item.NOMBRE,
                         image: item.IMAGEN || null,
                         ...(item.CATEGORIA !== undefined ? { category: item.CATEGORIA || '' } : {}),
-                        ...(item.LastCost !== undefined && item.LastCost > 0 ? { lastCost: item.LastCost } : {})
+                        ...(item.LastCost !== undefined && item.LastCost > 0 ? { lastCost: item.LastCost, lastCostAt: new Date() } : {})
                     },
                     create: {
                         upc: item.UPC,
@@ -117,6 +118,7 @@ export async function POST(req: Request) {
                         image: item.IMAGEN || null,
                         category: item.CATEGORIA || '',
                         lastCost: item.LastCost || 0,
+                        ...(item.LastCost !== undefined && item.LastCost > 0 ? { lastCostAt: new Date() } : {}),
                         userId: session.userId
                     }
                 });
@@ -146,7 +148,7 @@ export async function POST(req: Request) {
                 name: NOMBRE,
                 image: IMAGEN || null,
                 ...(CATEGORIA !== undefined ? { category: CATEGORIA || '' } : {}),
-                ...(body.LastCost !== undefined && body.LastCost > 0 ? { lastCost: body.LastCost } : {})
+                ...(body.LastCost !== undefined && body.LastCost > 0 ? { lastCost: body.LastCost, lastCostAt: new Date() } : {})
             },
             create: {
                 upc: UPC,
