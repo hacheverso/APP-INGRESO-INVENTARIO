@@ -747,6 +747,17 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
             return;
         }
 
+        // Verificación anti-voleo: si va sin categoría o sin imagen, confirmar antes de guardar
+        const sinCategoria = !(CATEGORIA || '').trim();
+        const sinImagen = !(IMAGEN || '').trim();
+        if (sinCategoria || sinImagen) {
+            const faltantes = sinCategoria && sinImagen ? 'CATEGORÍA ni IMAGEN' : sinCategoria ? 'CATEGORÍA' : 'IMAGEN';
+            if (!confirm(`⚠️ Vas a guardar "${NOMBRE.trim()}" sin ${faltantes}.\n\n¿Deseas guardarlo así de todas formas?\n\n(Cancelar te devuelve al formulario para completarlo)`)) {
+                if (isAudioEnabled) playBeep('warning');
+                return; // de vuelta al formulario, sin guardar
+            }
+        }
+
         const newProd: Product = { UPC, NOMBRE: NOMBRE.trim(), SKU: SKU.trim(), IMAGEN, CATEGORIA: (CATEGORIA || '').trim(), LastCost: 0 };
         // Tanto crear como editar sincronizan con Holded (el backend crea o actualiza sin duplicar)
         const isNewProduct = !productDB[UPC];
