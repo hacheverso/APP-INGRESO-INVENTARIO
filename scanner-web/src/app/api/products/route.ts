@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSession } from '@/lib/auth';
 import { fetchSheetsProducts } from '@/lib/sheets';
-import { createHoldedProduct, updateHoldedProduct, isHoldedConfigured } from '@/lib/holded';
+import { createHoldedProduct, updateHoldedProduct, deleteHoldedProduct, isHoldedConfigured } from '@/lib/holded';
 
 export const dynamic = 'force-dynamic';
 
@@ -238,11 +238,33 @@ export async function DELETE(req: Request) {
             return NextResponse.json({ success: true, message: `${result.count} productos eliminados del catálogo.`, count: result.count });
         }
 
+        // Borrado individual. Con ?holded=1 también se elimina el producto en Holded.
+        const alsoHolded = url.searchParams.get('holded') === '1';
+        const existing = await prisma.product.findUnique({
+            where: { upc_userId: { upc: upc, userId: session.userId } }
+        });
+        if (!existing) {
+            return NextResponse.json({ success: false, error: 'Producto no encontrado' }, { status: 404 });
+        }
+
+        let holded: { ok: boolean; deleted: number; error?: string } | null = null;
+        if (alsoHolded) {
+            if (!isHoldedConfigured()) {
+                holded = { ok: false, deleted: 0, error: 'HOLDED_API_KEY no está configurada en el servidor' };
+            } else {
+                holded = await deleteHoldedProduct({ holdedId: existing.holdedId, barcode: existing.upc });
+            }
+            // Si Holded falla, no borramos localmente: así el usuario puede reintentar sin perder el vínculo (holdedId).
+            if (!holded.ok) {
+                return NextResponse.json({ success: false, error: holded.error, holded }, { status: 502 });
+            }
+        }
+
         await prisma.product.delete({
             where: { upc_userId: { upc: upc, userId: session.userId } }
         });
 
-        return NextResponse.json({ success: true, message: "Product deleted successfully" });
+        return NextResponse.json({ success: true, message: "Product deleted successfully", holded });
     } catch (error: any) {
         console.error("Error deleting product:", error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });

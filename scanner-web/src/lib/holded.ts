@@ -251,6 +251,44 @@ export async function updateHoldedPrice(holdedId: string, price: number): Promis
     }
 }
 
+/**
+ * Elimina un producto en Holded. Usa el holdedId guardado; si no hay, busca por
+ * código de barras y elimina todas las coincidencias (evita dejar duplicados huérfanos).
+ * Nunca lanza: devuelve cuántos productos se eliminaron o el error.
+ */
+export async function deleteHoldedProduct(params: { holdedId?: string | null; barcode: string }): Promise<{ ok: boolean; deleted: number; error?: string }> {
+    const apiKey = process.env.HOLDED_API_KEY;
+    if (!apiKey) return { ok: false, deleted: 0, error: 'HOLDED_API_KEY no está configurada en el servidor' };
+    try {
+        let ids: string[] = [];
+        if (params.holdedId) {
+            ids = [params.holdedId];
+        } else if (params.barcode) {
+            ids = (await findHoldedProductsByBarcode(params.barcode)).map(p => p.id);
+        }
+        if (ids.length === 0) return { ok: true, deleted: 0 };
+
+        let deleted = 0;
+        for (const id of ids) {
+            const res = await fetch(`${HOLDED_API_BASE}/products/${id}`, {
+                method: 'DELETE',
+                headers: { 'key': apiKey },
+                signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+            });
+            const data: any = await res.json().catch(() => null);
+            if (res.status === 404) continue; // ya no existía en Holded
+            if (!res.ok || (data && data.status === 0)) {
+                return { ok: false, deleted, error: `Holded rechazó el borrado: ${data?.info || data?.message || `HTTP ${res.status}`}` };
+            }
+            deleted++;
+        }
+        return { ok: true, deleted };
+    } catch (error: any) {
+        const detail = error?.name === 'TimeoutError' ? 'timeout de conexión' : (error?.message || 'error de red');
+        return { ok: false, deleted: 0, error: `No se pudo conectar con Holded: ${detail}` };
+    }
+}
+
 /** Devuelve un mapa barcode → productId con todos los productos de Holded. */
 export async function getHoldedProductsByBarcode(): Promise<Map<string, string>> {
     const apiKey = process.env.HOLDED_API_KEY;

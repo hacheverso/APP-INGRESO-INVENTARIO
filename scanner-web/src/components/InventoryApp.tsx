@@ -3316,24 +3316,34 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                             </button>
                                                             <button 
                                                                 onClick={async () => {
-                                                                    if (confirm(`¿Eliminar definitivamente el producto [${prod.UPC}] de la nube?`)) {
-                                                                        try {
-                                                                            const res = await fetch(`/api/products?upc=${prod.UPC}`, { method: 'DELETE' });
-                                                                            if (res.ok) {
-                                                                                showToast("Producto eliminado de la BD", "success");
-                                                                                setProductDB(prev => {
-                                                                                    const updated = { ...prev };
-                                                                                    delete updated[prod.UPC];
-                                                                                    return updated;
-                                                                                });
-                                                                            }
-                                                                        } catch (e) {
-                                                                            showToast("Error eliminando", "error");
+                                                                    if (!confirm(`⚠️ ¿Estás seguro de eliminar "${prod.NOMBRE || prod.UPC}" [${prod.UPC}]?\n\nSe borrará de INGRESADOS y TAMBIÉN de Holded.\n\nEsta acción no se puede deshacer.`)) return;
+                                                                    const quitarLocal = () => setProductDB(prev => {
+                                                                        const updated = { ...prev };
+                                                                        delete updated[prod.UPC];
+                                                                        return updated;
+                                                                    });
+                                                                    try {
+                                                                        const res = await fetch(`/api/products?upc=${encodeURIComponent(prod.UPC)}&holded=1`, { method: 'DELETE' });
+                                                                        const data = await res.json().catch(() => ({}));
+                                                                        if (res.ok && data.success) {
+                                                                            const n = data.holded?.deleted ?? 0;
+                                                                            showToast(n > 0 ? `Producto eliminado de INGRESADOS y de Holded (${n})` : "Producto eliminado de INGRESADOS (no estaba en Holded)", "success");
+                                                                            quitarLocal();
+                                                                            return;
                                                                         }
+                                                                        // Holded falló: nada se borró todavía. Ofrecer borrar solo localmente.
+                                                                        const motivo = data.error || `HTTP ${res.status}`;
+                                                                        if (confirm(`No se pudo eliminar en Holded:\n${motivo}\n\n¿Deseas eliminarlo SOLO de INGRESADOS? (quedará en Holded)`)) {
+                                                                            const res2 = await fetch(`/api/products?upc=${encodeURIComponent(prod.UPC)}`, { method: 'DELETE' });
+                                                                            if (res2.ok) { showToast("Producto eliminado solo de INGRESADOS", "success"); quitarLocal(); }
+                                                                            else showToast("Error eliminando en INGRESADOS", "error");
+                                                                        }
+                                                                    } catch (e) {
+                                                                        showToast("Error eliminando", "error");
                                                                     }
                                                                 }} 
                                                                 className="p-2 bg-page hover:bg-red-500/15 text-muted hover:text-red-600 rounded-lg transition-colors border border-line shadow-sm"
-                                                                title="Eliminar de la BD"
+                                                                title="Eliminar de INGRESADOS y de Holded"
                                                             >
                                                                 <Trash2 size={16} />
                                                             </button>
@@ -3564,7 +3574,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                 {!matchedProduct && !unknownUpc && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); iniciarProductoSinUpc('U'); }}
-                                        className="absolute top-6 left-6 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-blue/10 hover:bg-brand-blue hover:text-white text-brand-blue border border-brand-blue/30 text-[10px] font-black uppercase tracking-widest transition-colors z-30"
+                                        className="absolute top-6 left-1/2 -translate-x-1/2 whitespace-nowrap flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-blue/10 hover:bg-brand-blue hover:text-white text-brand-blue border border-brand-blue/30 text-[10px] font-black uppercase tracking-widest transition-colors z-30"
                                         title="Producto usado, open box o sin código de barras: genera un UPC interno automáticamente"
                                     >
                                         <PlusCircle size={14} /> Usado / sin UPC
