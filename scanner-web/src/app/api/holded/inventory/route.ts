@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { getSession } from '@/lib/auth';
 import { isHoldedConfigured, listHoldedInventory, listHoldedSalesDocs } from '@/lib/holded';
 import { calcularCostoPonderado, Lote } from '@/lib/costing';
@@ -25,6 +26,11 @@ const LOTE_UPSERT = 200;
 async function sincronizarVentas(userId: string, reconstruir: boolean) {
     const estado = await prisma.holdedSyncState.findUnique({ where: { userId } });
     const ahora = Date.now();
+    // Documentos guardados por una versión anterior (sin unidades por línea) → reconstruir una vez
+    if (!reconstruir && estado?.salesSyncedAt) {
+        const sinLineas = await prisma.holdedSaleDoc.count({ where: { userId, lines: { equals: Prisma.DbNull } } });
+        if (sinLineas > 0) reconstruir = true;
+    }
     let desde: number;
     let reconciliar: boolean;
     if (reconstruir || !estado?.salesSyncedAt) {
@@ -41,8 +47,8 @@ async function sincronizarVentas(userId: string, reconstruir: boolean) {
     for (let i = 0; i < docs.length; i += LOTE_UPSERT) {
         await prisma.$transaction(docs.slice(i, i + LOTE_UPSERT).map(d => prisma.holdedSaleDoc.upsert({
             where: { userId_docId: { userId, docId: d.docId } },
-            create: { userId, docId: d.docId, tipo: d.tipo, date: new Date(d.date), keys: d.keys },
-            update: { tipo: d.tipo, date: new Date(d.date), keys: d.keys },
+            create: { userId, docId: d.docId, tipo: d.tipo, date: new Date(d.date), keys: d.keys, lines: d.lines as unknown as Prisma.InputJsonValue },
+            update: { tipo: d.tipo, date: new Date(d.date), keys: d.keys, lines: d.lines as unknown as Prisma.InputJsonValue },
         })));
     }
 
@@ -61,19 +67,26 @@ async function sincronizarVentas(userId: string, reconstruir: boolean) {
         });
     }
 
-    const todos = await prisma.holdedSaleDoc.findMany({ where: { userId }, select: { date: true, keys: true } });
-    const byProductId = new Map<string, number>(), bySku = new Map<string, number>(), byName = new Map<string, number>();
+    // Índice: clave ("pid:..", "sku:..", "name:..") → ventas [{ ts, units }]
+    const todos = await prisma.holdedSaleDoc.findMany({ where: { userId }, select: { date: true, keys: true, lines: true } });
+    const ventasPorClave = new Map<string, { ts: number; units: number }[]>();
+    const add = (k: string, ts: number, units: number) => { const arr = ventasPorClave.get(k) || []; arr.push({ ts, units }); ventasPorClave.set(k, arr); };
     for (const d of todos) {
         const ts = d.date.getTime();
-        for (const k of d.keys) {
-            const map = k.startsWith('pid:') ? byProductId : k.startsWith('sku:') ? bySku : k.startsWith('name:') ? byName : null;
-            if (!map) continue;
-            const val = k.slice(k.indexOf(':') + 1);
-            if (ts > (map.get(val) || 0)) map.set(val, ts);
+        const lines = Array.isArray(d.lines) ? (d.lines as unknown as { pid?: string; sku?: string; name?: string; units: number }[]) : null;
+        if (lines && lines.length) {
+            for (const l of lines) {
+                const u = Number(l.units) || 0;
+                if (l.pid) add(`pid:${l.pid}`, ts, u);
+                if (l.sku) add(`sku:${l.sku}`, ts, u);
+                if (l.name) add(`name:${l.name}`, ts, u);
+            }
+        } else {
+            for (const k of d.keys) add(k, ts, 1); // documento antiguo sin unidades: cuenta 1
         }
     }
     return {
-        byProductId, bySku, byName,
+        ventasPorClave,
         info: { modo: reconstruir ? 'reconstruccion' : reconciliar ? 'reconciliacion' : 'incremental', documentos: docs.length, borrados, errores, totalDocs: todos.length },
     };
 }
@@ -104,6 +117,14 @@ export async function GET(req: Request) {
         const productos = await prisma.product.findMany({ where: { userId: authSession.userId } });
         const porHoldedId = new Map(productos.filter(p => p.holdedId).map(p => [p.holdedId as string, p]));
         const porUpc = new Map(productos.map(p => [p.upc, p]));
+        // Varios productos de la app apuntando al mismo producto de Holded = diagnóstico de agrupación indebida
+        const vinculadosPorHoldedId = new Map<string, { upc: string; nombre: string }[]>();
+        for (const p of productos) {
+            if (!p.holdedId) continue;
+            const arr = vinculadosPorHoldedId.get(p.holdedId) || [];
+            arr.push({ upc: p.upc, nombre: p.name });
+            vinculadosPorHoldedId.set(p.holdedId, arr);
+        }
 
         // 3. Lotes por UPC desde los ingresos guardados, del más reciente al más antiguo
         const sesiones = await prisma.historySession.findMany({
@@ -112,6 +133,8 @@ export async function GET(req: Request) {
             orderBy: { createdAt: 'desc' }
         });
         const lotesPorUpc = new Map<string, Lote[]>();
+        const serialesPorLote = new Map<string, string[]>(); // "upc|lote" → seriales ingresados
+        const sesionPorLote = new Map<string, string>();      // "upc|lote" → id de la sesión (para reabrirla y corregirla)
         for (const s of sesiones) {
             const porProducto = new Map<string, { unidades: number; costoTotalUsd: number; trm: number }>();
             for (const r of s.records) {
@@ -120,6 +143,16 @@ export async function GET(req: Request) {
                 e.costoTotalUsd += (r.cantidad || 0) * (r.costoUsd || 0);
                 if (r.trm > 1) e.trm = r.trm;
                 porProducto.set(r.upc, e);
+                sesionPorLote.set(`${r.upc}|${s.batchName || s.id}`, s.id);
+                // seriales se guarda como JSON (["SN1"]); tolerar también texto plano separado por comas
+                let ser: string[] = [];
+                try { const parsed = JSON.parse(r.seriales || '[]'); ser = Array.isArray(parsed) ? parsed.map(String) : []; }
+                catch { ser = (r.seriales || '').split(/[,\n;]+/); }
+                ser = ser.map(x => x.trim()).filter(Boolean);
+                if (ser.length) {
+                    const k = `${r.upc}|${s.batchName || s.id}`;
+                    serialesPorLote.set(k, [...(serialesPorLote.get(k) || []), ...ser]);
+                }
             }
             for (const [upc, e] of porProducto) {
                 if (e.unidades <= 0) continue;
@@ -141,15 +174,20 @@ export async function GET(req: Request) {
             const upc = local?.upc || item.barcode || '';
             const lotes = upc ? (lotesPorUpc.get(upc) || []) : [];
             const costo = calcularCostoPonderado(lotes, item.stock);
-            // Última venta: por id de producto, si no por SKU, si no por nombre (Holded no siempre vincula la línea)
-            const ventaTs = ventas.byProductId.get(item.id)
-                || (item.sku ? ventas.bySku.get(item.sku.toUpperCase()) : undefined)
-                || (local?.sku ? ventas.bySku.get(local.sku.toUpperCase()) : undefined)
-                || (item.name ? ventas.byName.get(item.name.toUpperCase()) : undefined)
-                || null;
+            // Ventas: por id de producto, si no por SKU, si no por nombre (Holded no siempre vincula la línea)
+            const claves = [`pid:${item.id}`, item.sku ? `sku:${item.sku.toUpperCase()}` : '', local?.sku ? `sku:${local.sku.toUpperCase()}` : '', item.name ? `name:${item.name.toUpperCase()}` : ''].filter(Boolean);
+            const ventasProd = claves.map(k => ventas.ventasPorClave.get(k)).find(v => v && v.length) || [];
+            const ventaTs = ventasProd.reduce((m, v) => Math.max(m, v.ts), 0) || null;
+            const llegadaTs = lotes[0] ? new Date(lotes[0].fecha).getTime() : null;
+            const desdeLlegada = llegadaTs ? ventasProd.filter(v => v.ts >= llegadaTs) : [];
+            const ultimos90 = ventasProd.filter(v => v.ts >= Date.now() - 90 * 24 * 60 * 60 * 1000);
             return {
                 ultimaVenta: ventaTs ? new Date(ventaTs).toISOString() : null,
                 ultimaLlegada: lotes[0]?.fecha || null,
+                vendidosDesdeLlegada: desdeLlegada.reduce((a, v) => a + v.units, 0),
+                ventasDesdeLlegada: desdeLlegada.length,
+                vendidos90d: ultimos90.reduce((a, v) => a + v.units, 0),
+                vinculados: vinculadosPorHoldedId.get(item.id) || [],
                 holdedId: item.id,
                 upc,
                 nombre: local?.name || item.name,
@@ -161,7 +199,7 @@ export async function GET(req: Request) {
                 costoUsd: costo.costoUsd,
                 costoCop: costo.costoCop,
                 cubiertas: costo.cubiertas,
-                lotes: costo.lotesUsados,
+                lotes: costo.lotesUsados.map(l => ({ ...l, seriales: serialesPorLote.get(`${upc}|${l.lote}`) || [], sessionId: sesionPorLote.get(`${upc}|${l.lote}`) || null })),
                 ultimoLote: lotes[0] ? { lote: lotes[0].lote, fecha: lotes[0].fecha, costoUsd: lotes[0].costoUsd } : null,
             };
         }).sort((a, b) => (b.stock * (b.costoUsd || 0)) - (a.stock * (a.costoUsd || 0)) || b.stock - a.stock);

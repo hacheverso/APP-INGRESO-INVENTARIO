@@ -86,6 +86,7 @@ model HoldedSaleDoc {
   tipo      String   // invoice | salesreceipt
   date      DateTime
   keys      String[] // "pid:<holdedId>" | "sku:<SKU>" | "name:<NOMBRE>" de cada línea
+  lines     Json?    // [{ pid?, sku?, name?, units }] por línea, para contar unidades vendidas
   updatedAt DateTime @updatedAt
 
   @@unique([userId, docId])

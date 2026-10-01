@@ -156,7 +156,9 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     interface InvRow {
         holdedId: string; upc: string; nombre: string; sku: string; imagen: string; categoria: string;
         stock: number; precio: number; costoUsd: number | null; costoCop: number | null; cubiertas: number;
-        lotes: { lote: string; fecha: string; tomadas: number; costoUsd: number; trm: number }[];
+        lotes: { lote: string; fecha: string; tomadas: number; costoUsd: number; trm: number; seriales?: string[]; sessionId?: string | null }[];
+        vendidosDesdeLlegada?: number; ventasDesdeLlegada?: number; vendidos90d?: number;
+        vinculados?: { upc: string; nombre: string }[];
         ultimoLote: { lote: string; fecha: string; costoUsd: number } | null;
         ultimaVenta?: string | null;   // última factura/ticket de venta en Holded
         ultimaLlegada?: string | null; // último lote ingresado por la app
@@ -192,6 +194,19 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         } finally {
             setInvLoading(false);
         }
+    };
+
+    // Reabrir desde Inventario el ingreso (lote) que alimenta un producto, p. ej. para corregir un lote sin TRM o sin costo
+    const reabrirLoteDesdeInventario = async (lote: InvRow['lotes'][number]) => {
+        if (!lote.sessionId) { showToast(`No encuentro el ingreso del lote ${lote.lote}.`, 'error'); return; }
+        let sesion = savedSessions.find(s => s.id === lote.sessionId);
+        if (!sesion) {
+            const fresh = await refreshSessions();
+            sesion = fresh?.find(s => s.id === lote.sessionId);
+        }
+        if (!sesion) { showToast(`El ingreso ${lote.lote} ya no existe en el historial.`, 'error'); return; }
+        setInvFetchedAt(null); // al volver a Inventario se recalcula con el ingreso corregido
+        await loadSessionForEditing(sesion);
     };
 
     const guardarPrecio = async (row: InvRow, valor: string) => {
@@ -868,9 +883,23 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
             const res = await fetch('/api/products', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...newProd, syncHolded: true })
+                body: JSON.stringify({ ...newProd, syncHolded: true, crearNuevo: isNewProduct })
             });
             const data = await res.json();
+
+            if (!data.success && data.codigoExistente) {
+                // Otro dispositivo ya usó este código: asignar el siguiente libre y dejar que el usuario vuelva a guardar
+                if (/^U\d{8}-?\d{3,4}$/.test(UPC)) {
+                    const nuevo = await siguienteCodigoInterno();
+                    setNewProductForm(prev => ({ ...prev, UPC: nuevo }));
+                    setUpc(nuevo);
+                    showToast(`El código ${UPC} ya estaba usado por otro producto. Se asignó ${nuevo}; revisa y guarda de nuevo.`, 'error');
+                } else {
+                    showToast(data.error, 'error');
+                }
+                triggerFeedback('error');
+                return;
+            }
 
             if (data.success) {
                 // Optimistic UI Update
@@ -992,15 +1021,23 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
 
     // Producto usado / open box / sin código de barras: generar un UPC interno único
     // (U + fecha + consecutivo del día, ej. U20261001-001) y abrir el formulario como USADO.
-    const iniciarProductoSinUpc = (condicion: Condicion = 'U') => {
+    const siguienteCodigoInterno = async (): Promise<string> => {
         const now = new Date();
         const dayKey = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
         // Solo letras y números: un guion lo escribe el lector como comilla en teclado español.
-        // Se cuentan también los códigos viejos con guion para no repetir consecutivo.
         const prefix = `U${dayKey}`;
+        // El consecutivo lo da el servidor (base de datos) para que dos dispositivos nunca generen el mismo código
+        try {
+            const res = await fetch(`/api/products/next-code?prefix=${prefix}`);
+            const data = await res.json();
+            if (data.success && data.code) return data.code as string;
+        } catch { /* sin conexión: cálculo local */ }
         let maxSeq = 0;
         Object.keys(productDB).forEach(k => { const m = k.match(new RegExp(`^${prefix}-?(\\d{3,4})$`)); if (m) maxSeq = Math.max(maxSeq, parseInt(m[1], 10)); });
-        const codigo = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+        return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+    };
+    const iniciarProductoSinUpc = async (condicion: Condicion = 'U') => {
+        const codigo = await siguienteCodigoInterno();
         setUpc(codigo);
         setUnknownUpc(null);
         setMatchedProduct(null);
@@ -2700,20 +2737,22 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                     <th className="px-4 py-4 font-black text-right">Precio venta (Holded)</th>
                                                     <th className="px-4 py-4 font-black text-right">Utilidad</th>
                                                     <th className="px-4 py-4 font-black text-right">Margen</th>
-                                                    <th className="px-6 py-4 font-black text-right">Sin venta hace</th>
+                                                    <th className="px-6 py-4 font-black text-right">Ventas</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-line/60">
                                                 {filas.map((r, idx) => {
                                                     const margen = r.costoCop !== null && r.precio > 0 ? ((r.precio - r.costoCop) / r.precio) * 100 : null;
                                                     const utilidad = r.costoCop !== null && r.precio > 0 ? r.precio - r.costoCop : null;
-                                                    // Días sin venta: si el producto llegó DESPUÉS de la última venta, cuenta desde la llegada
+                                                    // Ventas: última venta real en Holded; si llegó después de la última venta, el reloj corre desde la llegada
                                                     const ventaTs = r.ultimaVenta ? new Date(r.ultimaVenta).getTime() : NaN;
                                                     const llegadaTs = r.ultimaLlegada ? new Date(r.ultimaLlegada).getTime() : NaN;
+                                                    const dias = (ts: number) => Math.max(0, Math.floor((Date.now() - ts) / 86400000));
+                                                    const hace = (ts: number) => { const d = dias(ts); return d === 0 ? 'hoy' : d === 1 ? 'ayer' : `hace ${d} d`; };
                                                     const desdeLlegada = !isNaN(llegadaTs) && (isNaN(ventaTs) || llegadaTs > ventaTs);
-                                                    const refTs = desdeLlegada ? llegadaTs : ventaTs;
-                                                    const diasSinVenta = isNaN(refTs) ? null : Math.max(0, Math.floor((Date.now() - refTs) / 86400000));
-                                                    const diasTxt = diasSinVenta === null ? null : diasSinVenta === 0 ? 'hoy' : diasSinVenta === 1 ? '1 día' : `${diasSinVenta} días`;
+                                                    const diasSinVenta = isNaN(ventaTs) && isNaN(llegadaTs) ? null : dias(desdeLlegada ? llegadaTs : ventaTs);
+                                                    const semaforo = diasSinVenta === null ? '' : diasSinVenta <= 7 ? 'text-brand-green-ink bg-brand-green/10 border-brand-green/40' : diasSinVenta <= 30 ? 'text-amber-700 bg-amber-500/10 border-amber-500/40' : 'text-red-700 bg-red-500/10 border-red-500/40';
+                                                    const vinculadosExtra = (r.vinculados || []).length > 1;
                                                     const catActual = (r.categoria || '').trim() || 'Sin categoría';
                                                     const catPrev = idx > 0 ? ((filas[idx - 1].categoria || '').trim() || 'Sin categoría') : null;
                                                     const nuevaCategoria = invPorCategoria && !invCategoria && catActual !== catPrev;
@@ -2724,7 +2763,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                                 <td colSpan={9} className="px-6 py-2"><span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-brand-blue"><Tags size={12} /> {catActual} <span className="text-faint font-bold">· {filas.filter(f => ((f.categoria || '').trim() || 'Sin categoría') === catActual).length}</span></span></td>
                                                             </tr>
                                                         )}
-                                                        <tr className="hover:bg-ink/5 transition-colors">
+                                                        <tr className="hover:bg-ink/5 transition-colors h-[76px]">
                                                             <td className="px-6 py-3">
                                                                 <div className="flex items-center gap-3">
                                                                     <div className="w-11 h-11 bg-white rounded-lg border border-line overflow-hidden flex items-center justify-center shrink-0">
@@ -2790,18 +2829,27 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                                     <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border ${margen < 0 ? 'text-red-700 bg-red-500/10 border-red-500/40' : margen < 10 ? 'text-amber-700 bg-amber-500/10 border-amber-500/40' : 'text-brand-green-ink bg-brand-green/10 border-brand-green/40'}`}>{margen.toFixed(0)}%</span>
                                                                 )}
                                                             </td>
-                                                            <td className="px-6 py-3 text-right whitespace-nowrap">
-                                                                {diasTxt === null ? (
+                                                            <td className="px-6 py-3 text-right">
+                                                                {diasSinVenta === null ? (
                                                                     <span className="text-[10px] text-faint uppercase font-bold tracking-wider" title="Sin ventas en Holded en los últimos 2 años y sin ingresos en la app">sin datos</span>
                                                                 ) : (
-                                                                    <span className="inline-flex flex-col items-end gap-0.5">
-                                                                        <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border ${diasSinVenta! <= 7 ? 'text-brand-green-ink bg-brand-green/10 border-brand-green/40' : diasSinVenta! <= 30 ? 'text-amber-700 bg-amber-500/10 border-amber-500/40' : 'text-red-700 bg-red-500/10 border-red-500/40'}`}
-                                                                            title={desdeLlegada
-                                                                                ? `Llegó el ${fmtFecha(r.ultimaLlegada!)}${r.ultimaVenta ? ` (última venta anterior: ${fmtFecha(r.ultimaVenta)})` : ' y no registra ventas en Holded'}; se cuenta desde la llegada`
-                                                                                : `Última venta en Holded: ${fmtFecha(r.ultimaVenta!)}`}>
-                                                                            {diasTxt}
+                                                                    <span className="inline-flex flex-col items-end gap-1 max-w-[240px]">
+                                                                        {/* Línea 1: la última venta real, o aviso de que no se ha vendido desde que llegó */}
+                                                                        {!isNaN(ventaTs) && !desdeLlegada ? (
+                                                                            <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border whitespace-nowrap ${semaforo}`} title={`Última factura o ticket de venta en Holded: ${fmtFecha(r.ultimaVenta!)}`}>
+                                                                                Vendido {hace(ventaTs)} · {fmtFecha(r.ultimaVenta!)}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border whitespace-nowrap ${semaforo}`} title={r.ultimaVenta ? `Última venta anterior a la llegada: ${fmtFecha(r.ultimaVenta)}` : 'No registra ventas en Holded en los últimos 2 años'}>
+                                                                                Sin venta desde que llegó
+                                                                            </span>
+                                                                        )}
+                                                                        {/* Línea 2: llegada y cuántas unidades se vendieron desde entonces */}
+                                                                        <span className="text-[9px] font-bold uppercase tracking-wider text-muted leading-tight">
+                                                                            {!isNaN(llegadaTs)
+                                                                                ? <>Llegó {hace(llegadaTs)} ({fmtFecha(r.ultimaLlegada!)}) · vendidos desde entonces: <span className="text-ink">{r.vendidosDesdeLlegada ?? 0} und</span>{desdeLlegada && r.ultimaVenta ? ` · última venta ${fmtFecha(r.ultimaVenta)}` : ''}</>
+                                                                                : <>Sin ingreso en la app · vendidos 90 d: <span className="text-ink">{r.vendidos90d ?? 0} und</span></>}
                                                                         </span>
-                                                                        <span className="text-[9px] font-bold uppercase tracking-wider text-muted">{desdeLlegada ? `desde que llegó · ${fmtFecha(r.ultimaLlegada!)}` : `última venta · ${fmtFecha(r.ultimaVenta!)}`}</span>
                                                                     </span>
                                                                 )}
                                                             </td>
@@ -2812,15 +2860,28 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                                     <div className="flex flex-wrap items-center gap-2">
                                                                         <span className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-blue mr-1">Stock actual repartido en:</span>
                                                                         {r.lotes.map(l => (
-                                                                            <span key={l.lote + l.fecha} className="inline-flex items-center gap-2 text-[11px] font-bold font-mono bg-white/80 border border-line text-ink px-3 py-1 rounded-lg whitespace-nowrap" title={`Lote ${l.lote}`}>
-                                                                                <span className="text-brand-blue">{l.tomadas} und</span>
-                                                                                <span>USD ${l.costoUsd.toLocaleString('es-CO')}</span>
-                                                                                {l.trm > 1 && <span className="text-muted">TRM {l.trm.toLocaleString('es-CO')}</span>}
+                                                                            <button key={l.lote + l.fecha} onClick={() => reabrirLoteDesdeInventario(l)} className={`inline-flex items-center gap-2 text-[11px] font-bold font-mono bg-white/80 border px-3 py-1 rounded-lg whitespace-nowrap transition-colors hover:bg-brand-blue hover:text-white hover:border-brand-blue ${l.costoUsd <= 0 || l.trm <= 1 ? 'border-amber-500/50 text-amber-800' : 'border-line text-ink'}`} title={`Lote ${l.lote}${l.costoUsd <= 0 ? ' · este lote se ingresó SIN costo (baja el promedio)' : ''}${l.trm <= 1 ? ' · este lote entró en USD sin TRM (por eso no hay costo en COP)' : ''} · clic para reabrir este ingreso y corregirlo`}>
+                                                                                <Pencil size={10} className="opacity-60" />
+                                                                                <span className="text-brand-blue group-hover:text-white">{l.tomadas} und</span>
+                                                                                <span>USD ${l.costoUsd.toLocaleString('es-CO')}{l.costoUsd <= 0 ? ' ⚠ sin costo' : ''}</span>
+                                                                                {l.trm > 1 ? <span className="text-muted">TRM {l.trm.toLocaleString('es-CO')}</span> : <span className="text-amber-700">sin TRM</span>}
                                                                                 <span className="text-faint">{l.lote} · {fmtFecha(l.fecha)}</span>
-                                                                            </span>
+                                                                                {(l.seriales || []).length > 0 && <span className="text-[10px] text-ink-soft">S/N {(l.seriales || []).join(', ')}</span>}
+                                                                            </button>
                                                                         ))}
                                                                         {r.cubiertas < r.stock && <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">{r.stock - r.cubiertas} und sin ingreso en la app</span>}
                                                                     </div>
+                                                                    {r.lotes.some(l => l.trm <= 1 || l.costoUsd <= 0) && (
+                                                                        <div className="mt-2 text-[10px] font-bold uppercase tracking-wider text-amber-700 flex items-center gap-1.5">
+                                                                            <AlertTriangle size={12} /> Lotes en ámbar: sin TRM o sin costo. Haz clic en el lote para reabrir ese ingreso, corregirlo y guardarlo; el costo se recalcula al volver.
+                                                                        </div>
+                                                                    )}
+                                                                    {vinculadosExtra && (
+                                                                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-red-700">
+                                                                            <AlertTriangle size={12} /> {r.vinculados!.length} productos de la app apuntan a este mismo producto de Holded:
+                                                                            {r.vinculados!.map(v => <span key={v.upc} className="font-mono normal-case tracking-normal bg-white/80 border border-red-500/30 px-2 py-0.5 rounded-md">{v.upc} · {v.nombre}</span>)}
+                                                                        </div>
+                                                                    )}
                                                                 </td>
                                                             </tr>
                                                         )}

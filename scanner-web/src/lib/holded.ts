@@ -252,7 +252,9 @@ export interface HoldedSaleDocLite {
     tipo: string;
     date: number;   // unix ms
     keys: string[]; // "pid:<id>" | "sku:<SKU>" | "name:<NOMBRE>"
+    lines: HoldedSaleLine[];
 }
+export interface HoldedSaleLine { pid?: string; sku?: string; name?: string; units: number }
 export async function listHoldedSalesDocs(sinceTs: number): Promise<{ docs: HoldedSaleDocLite[]; errores: number }> {
     const apiKey = process.env.HOLDED_API_KEY;
     const out = { docs: [] as HoldedSaleDocLite[], errores: 0 };
@@ -275,12 +277,15 @@ export async function listHoldedSalesDocs(sinceTs: number): Promise<{ docs: Hold
             if (ts < sinceTs) continue;
             const lines: any[] = Array.isArray(d.products) ? d.products : (Array.isArray(d.items) ? d.items : []);
             const keys = new Set<string>();
+            const lineas: HoldedSaleLine[] = [];
             for (const line of lines) {
-                if (line?.productId) keys.add(`pid:${String(line.productId).trim()}`);
-                if (line?.sku) keys.add(`sku:${String(line.sku).trim().toUpperCase()}`);
-                if (line?.name) keys.add(`name:${String(line.name).trim().toUpperCase()}`);
+                const l: HoldedSaleLine = { units: Math.max(0, Number(line?.units) || 0) };
+                if (line?.productId) { l.pid = String(line.productId).trim(); keys.add(`pid:${l.pid}`); }
+                if (line?.sku) { l.sku = String(line.sku).trim().toUpperCase(); keys.add(`sku:${l.sku}`); }
+                if (line?.name) { l.name = String(line.name).trim().toUpperCase(); keys.add(`name:${l.name}`); }
+                if (l.pid || l.sku || l.name) lineas.push(l);
             }
-            out.docs.push({ docId: String(d.id), tipo, date: ts, keys: Array.from(keys) });
+            out.docs.push({ docId: String(d.id), tipo, date: ts, keys: Array.from(keys), lines: lineas });
         }
     }
     return out;

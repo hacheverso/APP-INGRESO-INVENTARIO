@@ -138,8 +138,19 @@ export async function POST(req: Request) {
         // Saber si ya existía (y su id en Holded) antes de guardar, para crear vs. actualizar
         const existing = await prisma.product.findUnique({
             where: { upc_userId: { upc: UPC, userId: session.userId } },
-            select: { holdedId: true }
+            select: { holdedId: true, name: true }
         });
+
+        // Protección: si el frontend está CREANDO (no editando) y el código ya existe,
+        // no se sobreescribe el producto existente (evita que dos equipos distintos
+        // terminen compartiendo el mismo código y el mismo producto en Holded).
+        if (body.crearNuevo && existing) {
+            return NextResponse.json({
+                success: false,
+                codigoExistente: true,
+                error: `El código ${UPC} ya existe en el catálogo: "${existing.name}". Genera otro código.`
+            }, { status: 409 });
+        }
 
         const product = await prisma.product.upsert({
             where: { upc_userId: { upc: UPC, userId: session.userId } },
