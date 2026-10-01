@@ -157,6 +157,8 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         stock: number; precio: number; costoUsd: number | null; costoCop: number | null; cubiertas: number;
         lotes: { lote: string; fecha: string; tomadas: number; costoUsd: number; trm: number }[];
         ultimoLote: { lote: string; fecha: string; costoUsd: number } | null;
+        ultimaVenta?: string | null;   // última factura/ticket de venta en Holded
+        ultimaLlegada?: string | null; // último lote ingresado por la app
     }
     const [invRows, setInvRows] = useState<InvRow[] | null>(null);
     const [invLoading, setInvLoading] = useState(false);
@@ -2683,12 +2685,22 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                     <th className="px-4 py-4 font-black text-right">Costo pond. COP</th>
                                                     <th className="px-4 py-4 font-black text-center">Lotes</th>
                                                     <th className="px-4 py-4 font-black text-right">Precio venta (Holded)</th>
-                                                    <th className="px-6 py-4 font-black text-right">Margen</th>
+                                                    <th className="px-4 py-4 font-black text-right">Utilidad</th>
+                                                    <th className="px-4 py-4 font-black text-right">Margen</th>
+                                                    <th className="px-6 py-4 font-black text-right">Sin venta hace</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-line/60">
                                                 {filas.map((r, idx) => {
                                                     const margen = r.costoCop !== null && r.precio > 0 ? ((r.precio - r.costoCop) / r.precio) * 100 : null;
+                                                    const utilidad = r.costoCop !== null && r.precio > 0 ? r.precio - r.costoCop : null;
+                                                    // Días sin venta: si el producto llegó DESPUÉS de la última venta, cuenta desde la llegada
+                                                    const ventaTs = r.ultimaVenta ? new Date(r.ultimaVenta).getTime() : NaN;
+                                                    const llegadaTs = r.ultimaLlegada ? new Date(r.ultimaLlegada).getTime() : NaN;
+                                                    const desdeLlegada = !isNaN(llegadaTs) && (isNaN(ventaTs) || llegadaTs > ventaTs);
+                                                    const refTs = desdeLlegada ? llegadaTs : ventaTs;
+                                                    const diasSinVenta = isNaN(refTs) ? null : Math.max(0, Math.floor((Date.now() - refTs) / 86400000));
+                                                    const diasTxt = diasSinVenta === null ? null : diasSinVenta === 0 ? 'hoy' : diasSinVenta === 1 ? '1 día' : `${diasSinVenta} días`;
                                                     const catActual = (r.categoria || '').trim() || 'Sin categoría';
                                                     const catPrev = idx > 0 ? ((filas[idx - 1].categoria || '').trim() || 'Sin categoría') : null;
                                                     const nuevaCategoria = invPorCategoria && !invCategoria && catActual !== catPrev;
@@ -2696,7 +2708,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                         <React.Fragment key={r.holdedId}>
                                                         {nuevaCategoria && (
                                                             <tr className="bg-brand-blue/5">
-                                                                <td colSpan={7} className="px-6 py-2"><span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-brand-blue"><Tags size={12} /> {catActual} <span className="text-faint font-bold">· {filas.filter(f => ((f.categoria || '').trim() || 'Sin categoría') === catActual).length}</span></span></td>
+                                                                <td colSpan={9} className="px-6 py-2"><span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-brand-blue"><Tags size={12} /> {catActual} <span className="text-faint font-bold">· {filas.filter(f => ((f.categoria || '').trim() || 'Sin categoría') === catActual).length}</span></span></td>
                                                             </tr>
                                                         )}
                                                         <tr className="hover:bg-ink/5 transition-colors">
@@ -2753,15 +2765,37 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                                     {invSavingId === r.holdedId && <RefreshCw size={12} className="animate-spin text-brand-blue" />}
                                                                 </div>
                                                             </td>
-                                                            <td className="px-6 py-3 text-right">
+                                                            <td className="px-4 py-3 text-right whitespace-nowrap">
+                                                                {utilidad === null ? <span className="text-faint">—</span> : (
+                                                                    <span className={`font-mono font-black ${utilidad < 0 ? 'text-red-700' : 'text-brand-green-ink'}`} title={utilidad < 0 ? 'Este producto se vende por debajo del costo ponderado (pérdida)' : 'Precio de venta menos costo ponderado, por unidad'}>
+                                                                        {utilidad < 0 ? '-' : ''}{formatMoney(Math.abs(Math.round(utilidad)), 'COP')}
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right">
                                                                 {margen === null ? <span className="text-faint">—</span> : (
                                                                     <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border ${margen < 0 ? 'text-red-700 bg-red-500/10 border-red-500/40' : margen < 10 ? 'text-amber-700 bg-amber-500/10 border-amber-500/40' : 'text-brand-green-ink bg-brand-green/10 border-brand-green/40'}`}>{margen.toFixed(0)}%</span>
-                                                )}
+                                                                )}
+                                                            </td>
+                                                            <td className="px-6 py-3 text-right whitespace-nowrap">
+                                                                {diasTxt === null ? (
+                                                                    <span className="text-[10px] text-faint uppercase font-bold tracking-wider" title="Sin ventas en Holded en los últimos 2 años y sin ingresos en la app">sin datos</span>
+                                                                ) : (
+                                                                    <span className="inline-flex flex-col items-end gap-0.5">
+                                                                        <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border ${diasSinVenta! <= 7 ? 'text-brand-green-ink bg-brand-green/10 border-brand-green/40' : diasSinVenta! <= 30 ? 'text-amber-700 bg-amber-500/10 border-amber-500/40' : 'text-red-700 bg-red-500/10 border-red-500/40'}`}
+                                                                            title={desdeLlegada
+                                                                                ? `Llegó el ${fmtFecha(r.ultimaLlegada!)}${r.ultimaVenta ? ` (última venta anterior: ${fmtFecha(r.ultimaVenta)})` : ' y no registra ventas en Holded'}; se cuenta desde la llegada`
+                                                                                : `Última venta en Holded: ${fmtFecha(r.ultimaVenta!)}`}>
+                                                                            {diasTxt}
+                                                                        </span>
+                                                                        <span className="text-[9px] font-bold uppercase tracking-wider text-muted">{desdeLlegada ? `desde que llegó · ${fmtFecha(r.ultimaLlegada!)}` : `última venta · ${fmtFecha(r.ultimaVenta!)}`}</span>
+                                                                    </span>
+                                                                )}
                                                             </td>
                                                         </tr>
                                                         {invLotesAbiertos[r.holdedId] && r.lotes.length > 0 && (
                                                             <tr className="bg-brand-blue/5">
-                                                                <td colSpan={7} className="px-6 py-3">
+                                                                <td colSpan={9} className="px-6 py-3">
                                                                     <div className="flex flex-wrap items-center gap-2">
                                                                         <span className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-blue mr-1">Stock actual repartido en:</span>
                                                                         {r.lotes.map(l => (
@@ -2781,7 +2815,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                     );
                                                 })}
                                                 {filas.length === 0 && (
-                                                    <tr><td colSpan={7} className="px-6 py-10 text-center text-muted font-bold uppercase tracking-widest text-xs">{invRows.length === 0 ? 'Holded no reporta productos con stock' : 'Sin resultados para la búsqueda'}</td></tr>
+                                                    <tr><td colSpan={9} className="px-6 py-10 text-center text-muted font-bold uppercase tracking-widest text-xs">{invRows.length === 0 ? 'Holded no reporta productos con stock' : 'Sin resultados para la búsqueda'}</td></tr>
                                                 )}
                                             </tbody>
                                         </table>
