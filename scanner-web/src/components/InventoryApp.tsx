@@ -160,6 +160,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const [invError, setInvError] = useState<string | null>(null);
     const [invFetchedAt, setInvFetchedAt] = useState<string | null>(null);
     const [invSearch, setInvSearch] = useState('');
+    const [invCategoria, setInvCategoria] = useState('');
     const [invSavingId, setInvSavingId] = useState<string | null>(null);
 
     const cargarInventario = async () => {
@@ -1837,7 +1838,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     if (!isClient) return null;
 
     return (
-        <div className="min-h-[100vh] flex flex-col font-sans bg-page text-ink transition-colors duration-300">
+        <div className="h-[100dvh] flex flex-col font-sans bg-page text-ink transition-colors duration-300">
             {/* Oculto: Input para archivos CSV */}
             <input type="file" accept=".csv" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
 
@@ -2445,7 +2446,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                     {/* Auth: User + Logout */}
                     <div className="flex items-center gap-2">
                         {currentUser && (
-                            <span className="text-[9px] font-bold tracking-widest uppercase text-faint hidden md:inline">{currentUser.email}</span>
+                            <span className="text-[9px] font-bold tracking-widest uppercase text-faint hidden 2xl:inline">{currentUser.email}</span>
                         )}
                         <button
                             onClick={async () => {
@@ -2462,19 +2463,23 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
             </header>
 
             {/* Container Principal Condicionado a la Vista */}
-            <main className="flex-1 flex flex-col lg:flex-row gap-6 py-6 px-4 md:px-6 2xl:px-10 w-full min-h-0 overflow-hidden">
+            <main className="flex-1 flex flex-col lg:flex-row gap-6 py-6 px-4 md:px-6 2xl:px-10 w-full min-h-0 overflow-y-auto lg:overflow-hidden custom-scrollbar">
 
                 {view === 'INVENTARIO' ? (() => {
                     const fmtFecha = (iso: string) => { const d = new Date(iso); return isNaN(d.getTime()) ? '' : `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`; };
                     const term = invSearch.trim().toLowerCase();
-                    const filas = (invRows || []).filter(r => !term || r.nombre.toLowerCase().includes(term) || r.upc.includes(term) || (r.sku || '').toLowerCase().includes(term) || (r.categoria || '').toLowerCase().includes(term));
+                    const categorias = Array.from(new Set((invRows || []).map(r => (r.categoria || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+                    const filas = (invRows || [])
+                        .filter(r => !term || r.nombre.toLowerCase().includes(term) || r.upc.includes(term) || (r.sku || '').toLowerCase().includes(term) || (r.categoria || '').toLowerCase().includes(term))
+                        .filter(r => !invCategoria || (invCategoria === '__sin__' ? !(r.categoria || '').trim() : (r.categoria || '').trim() === invCategoria))
+                        .sort((a, b) => ((a.categoria || '').trim() || '\uffff').localeCompare((b.categoria || '').trim() || '\uffff') || a.nombre.localeCompare(b.nombre));
                     const totalUnidades = (invRows || []).reduce((a, r) => a + r.stock, 0);
                     const valorUsd = (invRows || []).reduce((a, r) => a + (r.costoUsd !== null ? r.costoUsd * r.cubiertas : 0), 0);
                     const valorCop = (invRows || []).reduce((a, r) => a + (r.costoCop !== null ? r.costoCop * r.cubiertas : 0), 0);
                     const valorVenta = (invRows || []).reduce((a, r) => a + r.precio * r.stock, 0);
                     const sinCosto = (invRows || []).filter(r => r.costoUsd === null).length;
                     return (
-                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
+                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-full min-h-0">
                         <div className="flex items-center justify-between gap-4 flex-wrap mb-2">
                             <div className="flex items-center gap-3 text-ink">
                                 <Warehouse size={24} className="text-brand-blue" />
@@ -2488,6 +2493,16 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                     <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
                                     <input type="text" value={invSearch} onChange={e => setInvSearch(e.target.value)} placeholder="Buscar producto, UPC, SKU o categoría..." className="w-[320px] bg-white/70 border border-line rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-medium text-ink placeholder-faint" />
                                 </div>
+                                <select
+                                    value={invCategoria}
+                                    onChange={e => setInvCategoria(e.target.value)}
+                                    className="bg-white/70 border border-line rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-bold text-xs uppercase tracking-wider text-ink cursor-pointer"
+                                    title="Filtrar por categoría"
+                                >
+                                    <option value="">Todas las categorías</option>
+                                    {categorias.map(c => <option key={c} value={c}>{c}</option>)}
+                                    <option value="__sin__">Sin categoría</option>
+                                </select>
                                 <button onClick={cargarInventario} disabled={invLoading} className="flex items-center gap-2 px-5 py-3 glass hover:bg-white rounded-xl text-xs font-black uppercase tracking-widest text-ink-soft transition-colors disabled:opacity-60">
                                     <RefreshCw size={14} className={invLoading ? 'animate-spin' : ''} /> {invLoading ? 'Consultando Holded...' : 'Actualizar'}
                                 </button>
@@ -2533,7 +2548,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                 </div>
 
                                 {/* Tabla */}
-                                <div className="glass rounded-3xl overflow-hidden pb-2 mb-12">
+                                <div className="glass rounded-3xl overflow-hidden pb-2 mb-12 shrink-0">
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left text-sm">
                                             <thead>
@@ -2548,10 +2563,19 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-line/60">
-                                                {filas.map(r => {
+                                                {filas.map((r, idx) => {
                                                     const margen = r.costoCop !== null && r.precio > 0 ? ((r.precio - r.costoCop) / r.precio) * 100 : null;
+                                                    const catActual = (r.categoria || '').trim() || 'Sin categoría';
+                                                    const catPrev = idx > 0 ? ((filas[idx - 1].categoria || '').trim() || 'Sin categoría') : null;
+                                                    const nuevaCategoria = !invCategoria && catActual !== catPrev;
                                                     return (
-                                                        <tr key={r.holdedId} className="hover:bg-ink/5 transition-colors">
+                                                        <React.Fragment key={r.holdedId}>
+                                                        {nuevaCategoria && (
+                                                            <tr className="bg-brand-blue/5">
+                                                                <td colSpan={7} className="px-6 py-2"><span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-brand-blue"><Tags size={12} /> {catActual} <span className="text-faint font-bold">· {filas.filter(f => ((f.categoria || '').trim() || 'Sin categoría') === catActual).length}</span></span></td>
+                                                            </tr>
+                                                        )}
+                                                        <tr className="hover:bg-ink/5 transition-colors">
                                                             <td className="px-6 py-3">
                                                                 <div className="flex items-center gap-3">
                                                                     <div className="w-11 h-11 bg-white rounded-lg border border-line overflow-hidden flex items-center justify-center shrink-0">
@@ -2608,6 +2632,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                                 )}
                                                             </td>
                                                         </tr>
+                                                        </React.Fragment>
                                                     );
                                                 })}
                                                 {filas.length === 0 && (
@@ -2622,7 +2647,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                     </div>
                     );
                 })() : view === 'CRUCE' ? (
-                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
+                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-full min-h-0">
                         <div className="flex items-center gap-3 text-ink mb-2">
                             <Target size={24} className="text-brand-blue" />
                             <h2 className="font-display text-2xl tracking-[0.08em] uppercase">Cruce de Mercancía</h2>
@@ -2770,7 +2795,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                         </div>
                     </div>
                 ) : view === 'STATS' ? (
-                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
+                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-full min-h-0">
                         <div className="flex items-center gap-3 text-ink mb-2">
                             <BarChart3 size={24} className="text-brand-blue" />
                             <h2 className="font-display text-2xl tracking-[0.08em] uppercase">Estadísticas</h2>
@@ -2935,7 +2960,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                         )}
                     </div>
                 ) : view === 'HISTORY' ? (
-                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
+                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-full min-h-0">
                         <div className="flex items-center gap-3 text-ink mb-2">
                             <History size={24} className="text-brand-blue" />
                             <h2 className="font-display text-2xl tracking-[0.08em] uppercase">Historial de Ingresos</h2>
@@ -3054,7 +3079,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                         </div>
                     </div>
                 ) : view === 'PRODUCTS' ? (
-                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
+                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-full min-h-0">
                         <div className="flex items-center justify-between mb-2 gap-4 flex-wrap">
                             <div className="flex items-center gap-3 text-ink">
                                 <PackageCheck size={24} className="text-brand-blue" />
@@ -3210,7 +3235,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                 ) : (
                     <>
                         {/* Left Panel: Inputs (Dark UI Mode) */}
-                        <div className="w-full xl:w-[600px] flex flex-col gap-6 flex-shrink-0 animate-in slide-in-from-left-4 duration-300 xl:h-full">
+                        <div className="w-full xl:w-[600px] flex flex-col gap-6 flex-shrink-0 animate-in slide-in-from-left-4 duration-300 xl:h-full xl:min-h-0 xl:overflow-y-auto custom-scrollbar pr-1">
 
                             {/* Top Split Section: Total (Left) + Currency (Center) + Controls (Right) */}
                             <div className="flex gap-4 min-h-[120px] shrink-0">
@@ -3336,7 +3361,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                             </div>
 
                             {/* Big Dark Canvas Box (Ghost Input) */}
-                            <div className={`flex-1 glass rounded-3xl p-6 flex flex-col items-center justify-center relative min-h-[440px] transition-all duration-300 group overflow-hidden ${isFlashing && scanStatus === 'success' ? 'ring-2 ring-brand-green/60 bg-brand-green/10' : ''} ${isFlashing && scanStatus === 'error' ? 'ring-2 ring-red-500/50 bg-red-500/10' : ''}`}>
+                            <div className={`flex-1 glass rounded-3xl p-6 flex flex-col items-center justify-center relative min-h-[440px] shrink-0 transition-all duration-300 group overflow-hidden ${isFlashing && scanStatus === 'success' ? 'ring-2 ring-brand-green/60 bg-brand-green/10' : ''} ${isFlashing && scanStatus === 'error' ? 'ring-2 ring-red-500/50 bg-red-500/10' : ''}`}>
 
                                 {/* Tarjeta de Producto Reconocido (Oculta el input visualmente cuando hay match) */}
                                 {matchedProduct ? (
