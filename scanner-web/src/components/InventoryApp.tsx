@@ -161,6 +161,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const [invFetchedAt, setInvFetchedAt] = useState<string | null>(null);
     const [invSearch, setInvSearch] = useState('');
     const [invCategoria, setInvCategoria] = useState('');
+    const [invPorCategoria, setInvPorCategoria] = useState(false); // false = más unidades arriba (defecto)
     const [invSavingId, setInvSavingId] = useState<string | null>(null);
 
     const cargarInventario = async () => {
@@ -2472,7 +2473,9 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                     const filas = (invRows || [])
                         .filter(r => !term || r.nombre.toLowerCase().includes(term) || r.upc.includes(term) || (r.sku || '').toLowerCase().includes(term) || (r.categoria || '').toLowerCase().includes(term))
                         .filter(r => !invCategoria || (invCategoria === '__sin__' ? !(r.categoria || '').trim() : (r.categoria || '').trim() === invCategoria))
-                        .sort((a, b) => ((a.categoria || '').trim() || '\uffff').localeCompare((b.categoria || '').trim() || '\uffff') || a.nombre.localeCompare(b.nombre));
+                        .sort((a, b) => invPorCategoria
+                            ? (((a.categoria || '').trim() || '\uffff').localeCompare((b.categoria || '').trim() || '\uffff') || a.nombre.localeCompare(b.nombre))
+                            : (b.stock - a.stock || a.nombre.localeCompare(b.nombre)));
                     const totalUnidades = (invRows || []).reduce((a, r) => a + r.stock, 0);
                     const valorUsd = (invRows || []).reduce((a, r) => a + (r.costoUsd !== null ? r.costoUsd * r.cubiertas : 0), 0);
                     const valorCop = (invRows || []).reduce((a, r) => a + (r.costoCop !== null ? r.costoCop * r.cubiertas : 0), 0);
@@ -2503,6 +2506,13 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                     {categorias.map(c => <option key={c} value={c}>{c}</option>)}
                                     <option value="__sin__">Sin categoría</option>
                                 </select>
+                                <button
+                                    onClick={() => setInvPorCategoria(v => !v)}
+                                    className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-colors border ${invPorCategoria ? 'bg-brand-blue text-white border-brand-blue shadow-[0_4px_14px_rgba(58,82,218,0.35)]' : 'glass text-ink-soft hover:bg-white border-transparent'}`}
+                                    title={invPorCategoria ? 'Volver al orden por unidades (más stock arriba)' : 'Agrupar por categoría para poner precios'}
+                                >
+                                    <Tags size={14} /> {invPorCategoria ? 'Por categorías' : 'Organizar por categorías'}
+                                </button>
                                 <button onClick={cargarInventario} disabled={invLoading} className="flex items-center gap-2 px-5 py-3 glass hover:bg-white rounded-xl text-xs font-black uppercase tracking-widest text-ink-soft transition-colors disabled:opacity-60">
                                     <RefreshCw size={14} className={invLoading ? 'animate-spin' : ''} /> {invLoading ? 'Consultando Holded...' : 'Actualizar'}
                                 </button>
@@ -2567,7 +2577,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                     const margen = r.costoCop !== null && r.precio > 0 ? ((r.precio - r.costoCop) / r.precio) * 100 : null;
                                                     const catActual = (r.categoria || '').trim() || 'Sin categoría';
                                                     const catPrev = idx > 0 ? ((filas[idx - 1].categoria || '').trim() || 'Sin categoría') : null;
-                                                    const nuevaCategoria = !invCategoria && catActual !== catPrev;
+                                                    const nuevaCategoria = invPorCategoria && !invCategoria && catActual !== catPrev;
                                                     return (
                                                         <React.Fragment key={r.holdedId}>
                                                         {nuevaCategoria && (
