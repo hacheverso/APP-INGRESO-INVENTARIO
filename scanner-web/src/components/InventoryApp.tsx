@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { BarChart3, Target, Warehouse, Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning, Search, LogOut, RefreshCw, Link2, Pencil, Check, ExternalLink, ClipboardPaste } from 'lucide-react';
+import { BarChart3, Target, Warehouse, Printer, Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning, Search, LogOut, RefreshCw, Link2, Pencil, Check, ExternalLink, ClipboardPaste } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { v4 as uuidv4 } from 'uuid';
+import JsBarcode from 'jsbarcode';
 
 type ScanMode = 'UPC_SERIAL' | 'MASSIVE';
 type Currency = 'COP' | 'USD';
@@ -980,6 +981,57 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         setShowNewProductModal(true);
         showToast(`Código interno generado: ${codigo}. Escribe el nombre del producto.`, 'info');
         setTimeout(() => modalNameRef.current?.focus(), 150);
+    };
+
+    // ====== Tirilla para usados / open box (impresora térmica 58mm) ======
+    const condicionDeRegistro = (r: InventoryRecord): 'USADO' | 'OPEN BOX' | null => {
+        const sku = (r.SKU || productDB[r.UPC]?.SKU || '').toUpperCase();
+        if (sku.endsWith('-O')) return 'OPEN BOX';
+        if (sku.endsWith('-U') || /^U\d{8}-\d{3,4}$/.test(r.UPC)) return 'USADO';
+        return null;
+    };
+    const barcodeSvg = (value: string, height: number) => {
+        try {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            JsBarcode(svg, value, { format: 'CODE128', displayValue: false, width: 2, height, margin: 0 });
+            return svg.outerHTML;
+        } catch { return ''; }
+    };
+    const imprimirTirilla = (r: InventoryRecord) => {
+        const condicion = condicionDeRegistro(r) || 'USADO';
+        const nombre = (r.Nombre || productDB[r.UPC]?.NOMBRE || r.UPC).toUpperCase();
+        const sku = r.SKU || productDB[r.UPC]?.SKU || '';
+        const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const fecha = (r.FechaHora || '').split(' ')[0].replace(/,+$/, '');
+        const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Tirilla ${esc(r.UPC)}</title>
+<style>
+  @page { size: 58mm auto; margin: 3mm; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; width: 52mm; }
+  .h { font-size: 8px; letter-spacing: 2px; text-align: center; font-weight: bold; }
+  .n { font-size: 13px; font-weight: 900; text-align: center; margin: 6px 0 4px; line-height: 1.15; }
+  .cond { text-align: center; margin: 2px 0 6px; }
+  .cond span { display: inline-block; border: 2px solid #000; border-radius: 4px; padding: 2px 10px; font-size: 11px; font-weight: 900; letter-spacing: 1.5px; }
+  .lbl { font-size: 8px; letter-spacing: 1.5px; text-align: center; font-weight: bold; margin-top: 6px; }
+  .bc { text-align: center; margin-top: 3px; }
+  .bc svg { max-width: 100%; height: auto; }
+  .code { font-family: 'Courier New', monospace; font-size: 11px; font-weight: bold; text-align: center; margin-top: 2px; letter-spacing: 1px; word-break: break-all; }
+  .sep { border-top: 1px dashed #000; margin: 7px 0; }
+  .f { font-size: 8px; text-align: center; line-height: 1.5; }
+</style></head>
+<body onload="window.print()">
+  <div class="h">INGRESADOS · HACHEVERSO</div>
+  <div class="n">${esc(nombre)}</div>
+  <div class="cond"><span>${condicion}</span></div>
+  <div class="lbl">CÓDIGO</div>
+  <div class="bc">${barcodeSvg(r.UPC, 60)}</div>
+  <div class="code">${esc(r.UPC)}</div>
+  ${r.Serial ? `<div class="sep"></div><div class="lbl">SERIAL</div><div class="bc">${barcodeSvg(r.Serial, 45)}</div><div class="code">${esc(r.Serial)}</div>` : ''}
+  <div class="sep"></div>
+  <div class="f">${sku ? `SKU ${esc(sku)}<br>` : ''}Ingreso ${esc(fecha)}${r.Lote ? ` · Lote ${esc(r.Lote)}` : ''}</div>
+</body></html>`;
+        const w = window.open('', '_blank', 'width=420,height=680');
+        if (!w) { showToast('El navegador bloqueó la ventana de impresión. Permite ventanas emergentes para este sitio.', 'error'); return; }
+        w.document.open(); w.document.write(html); w.document.close();
     };
 
     // Helper: Generador Inteligente de SKU
@@ -3749,6 +3801,15 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                             }`}>
                                                                 {r.Serial || `MASIVO x${r.Cantidad}`}
                                                             </span>
+                                                            {condicionDeRegistro(r) && (
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); imprimirTirilla(r); }}
+                                                                    className={`flex-shrink-0 transition-colors ${isMostRecentScanned ? 'text-white/80 hover:text-white' : 'text-brand-blue hover:text-brand-blue-hover'}`}
+                                                                    title={`Imprimir tirilla (${condicionDeRegistro(r)}) con código y serial`}
+                                                                >
+                                                                    <Printer size={isMostRecentScanned ? 18 : 14} strokeWidth={2.5} />
+                                                                </button>
+                                                            )}
                                                             <button onClick={(e) => handleDeleteRecord(r.ID, e)} className={`flex-shrink-0 transition-opacity ${isMostRecentScanned ? 'opacity-100 text-white/70 hover:text-white' : 'opacity-0 group-hover/tag:opacity-100 hover:text-red-600'}`}>
                                                                 <X size={isMostRecentScanned ? 18 : 14} strokeWidth={3} />
                                                             </button>
