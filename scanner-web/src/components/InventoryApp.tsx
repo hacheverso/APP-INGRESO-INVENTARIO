@@ -793,9 +793,27 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         }
     };
 
-    const processUpcScan = () => {
-        const upcVal = upc.trim();
+    // Los lectores de código de barras escriben como teclado en inglés: en teclado español
+    // el guion llega como comilla ('), el guion bajo como (?)... Si el código tal cual no
+    // existe, se prueban esas variantes para encontrar el producto real.
+    const resolveUpc = (raw: string) => {
+        const t = raw.trim();
+        if (!t || productDB[t]) return t;
+        const variantes = [
+            t.replace(/'/g, '-'),
+            t.replace(/'/g, ''),
+            t.replace(/-/g, ''),
+            t.replace(/\?/g, '_'),
+            t.replace(/_/g, '-'),
+            t.replace(/[^A-Za-z0-9]/g, ''),
+        ];
+        return variantes.find(v => v && productDB[v]) || t;
+    };
+
+    const processUpcScan = (override?: string) => {
+        const upcVal = resolveUpc(override ?? upc);
         if (!upcVal) return;
+        if (upcVal !== upc.trim()) setUpc(upcVal); // dejar el código real para el registro
 
         if (productDB[upcVal]) {
             setMatchedProduct(productDB[upcVal]);
@@ -969,9 +987,11 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const iniciarProductoSinUpc = (condicion: Condicion = 'U') => {
         const now = new Date();
         const dayKey = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-        const prefix = `U${dayKey}-`;
+        // Solo letras y números: un guion lo escribe el lector como comilla en teclado español.
+        // Se cuentan también los códigos viejos con guion para no repetir consecutivo.
+        const prefix = `U${dayKey}`;
         let maxSeq = 0;
-        Object.keys(productDB).forEach(k => { const m = k.match(new RegExp(`^${prefix}(\\d{1,4})$`)); if (m) maxSeq = Math.max(maxSeq, parseInt(m[1], 10)); });
+        Object.keys(productDB).forEach(k => { const m = k.match(new RegExp(`^${prefix}-?(\\d{3,4})$`)); if (m) maxSeq = Math.max(maxSeq, parseInt(m[1], 10)); });
         const codigo = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
         setUpc(codigo);
         setUnknownUpc(null);
@@ -987,7 +1007,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const condicionDeRegistro = (r: InventoryRecord): 'USADO' | 'OPEN BOX' | null => {
         const sku = (r.SKU || productDB[r.UPC]?.SKU || '').toUpperCase();
         if (sku.endsWith('-O')) return 'OPEN BOX';
-        if (sku.endsWith('-U') || /^U\d{8}-\d{3,4}$/.test(r.UPC)) return 'USADO';
+        if (sku.endsWith('-U') || /^U\d{8}-?\d{3,4}$/.test(r.UPC)) return 'USADO';
         return null;
     };
     const barcodeSvg = (value: string, height: number) => {
@@ -1354,7 +1374,10 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
 
             // Smart Scan Filter: Validate before processing
             if (field === 'upc') {
-                const validation = validateSmartScan('upc', upc);
+                // Normalizar primero (guion ↔ comilla del lector) y validar/procesar con el código real
+                const resolved = resolveUpc(upc);
+                if (resolved !== upc.trim()) setUpc(resolved);
+                const validation = validateSmartScan('upc', resolved);
                 if (!validation.valid) {
                     showToast(validation.message, 'error');
                     triggerFeedback('error');
@@ -1362,7 +1385,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                     upcRef.current?.focus();
                     return;
                 }
-                processUpcScan();
+                processUpcScan(resolved);
             }
             // Automatización Fase 8: Si escanea el serial, guarda inmediatamente y vuelve al UPC sin preguntar.
             else if (field === 'serial' && serial.trim()) {
