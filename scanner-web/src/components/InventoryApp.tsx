@@ -165,6 +165,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const [invSearch, setInvSearch] = useState('');
     const [invCategoria, setInvCategoria] = useState('');
     const [invPorCategoria, setInvPorCategoria] = useState(false); // false = más unidades arriba (defecto)
+    const [invLotesAbiertos, setInvLotesAbiertos] = useState<Record<string, boolean>>({}); // desglose de lotes por fila (oculto por defecto)
     const [invSavingId, setInvSavingId] = useState<string | null>(null);
 
     const cargarInventario = async () => {
@@ -2680,7 +2681,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                     <th className="px-4 py-4 font-black text-right">Stock</th>
                                                     <th className="px-4 py-4 font-black text-right">Costo pond. USD</th>
                                                     <th className="px-4 py-4 font-black text-right">Costo pond. COP</th>
-                                                    <th className="px-4 py-4 font-black">Lotes que lo componen</th>
+                                                    <th className="px-4 py-4 font-black text-center">Lotes</th>
                                                     <th className="px-4 py-4 font-black text-right">Precio venta (Holded)</th>
                                                     <th className="px-6 py-4 font-black text-right">Margen</th>
                                                 </tr>
@@ -2720,16 +2721,19 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                             <td className="px-4 py-3 text-right font-mono font-black text-brand-green-ink whitespace-nowrap">
                                                                 {r.costoCop !== null ? formatMoney(r.costoCop, 'COP') : <span className="text-faint" title="Algún lote entró en USD sin TRM">—</span>}
                                                             </td>
-                                                            <td className="px-4 py-3">
-                                                                <div className="flex flex-wrap gap-1 max-w-[260px]">
-                                                                    {r.lotes.length === 0 ? (
-                                                                        <span className="text-[10px] text-faint uppercase font-bold tracking-wider">sin ingresos</span>
-                                                                    ) : r.lotes.map(l => (
-                                                                        <span key={l.lote + l.fecha} className="text-[9px] font-bold font-mono bg-white/70 border border-line text-ink-soft px-2 py-0.5 rounded-md whitespace-nowrap" title={`${l.lote} · ${fmtFecha(l.fecha)} · ${l.tomadas} und a USD $${l.costoUsd}${l.trm > 1 ? ` · TRM ${l.trm}` : ''}`}>
-                                                                            {l.tomadas}× ${l.costoUsd} <span className="text-faint">· {fmtFecha(l.fecha)}</span>
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
+                                                            <td className="px-4 py-3 text-center">
+                                                                {r.lotes.length === 0 ? (
+                                                                    <span className="text-[10px] text-faint uppercase font-bold tracking-wider whitespace-nowrap">sin ingresos</span>
+                                                                ) : (
+                                                                    <button
+                                                                        onClick={() => setInvLotesAbiertos(prev => ({ ...prev, [r.holdedId]: !prev[r.holdedId] }))}
+                                                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-colors ${invLotesAbiertos[r.holdedId] ? 'bg-brand-blue text-white border-brand-blue' : 'bg-white/70 text-ink-soft border-line hover:border-brand-blue hover:text-brand-blue'}`}
+                                                                        title={invLotesAbiertos[r.holdedId] ? 'Ocultar desglose del stock por lotes' : 'Ver cómo está repartido el stock actual por lotes'}
+                                                                    >
+                                                                        {r.lotes.length} {r.lotes.length === 1 ? 'lote' : 'lotes'}
+                                                                        <ChevronDown size={12} className={`transition-transform ${invLotesAbiertos[r.holdedId] ? 'rotate-180' : ''}`} />
+                                                                    </button>
+                                                                )}
                                                             </td>
                                                             <td className="px-4 py-3 text-right">
                                                                 <div className="inline-flex items-center gap-1 bg-white/80 border border-line rounded-xl px-3 py-1.5 focus-within:ring-2 focus-within:ring-brand-blue">
@@ -2752,9 +2756,27 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                             <td className="px-6 py-3 text-right">
                                                                 {margen === null ? <span className="text-faint">—</span> : (
                                                                     <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border ${margen < 0 ? 'text-red-700 bg-red-500/10 border-red-500/40' : margen < 10 ? 'text-amber-700 bg-amber-500/10 border-amber-500/40' : 'text-brand-green-ink bg-brand-green/10 border-brand-green/40'}`}>{margen.toFixed(0)}%</span>
-                                                                )}
+                                                )}
                                                             </td>
                                                         </tr>
+                                                        {invLotesAbiertos[r.holdedId] && r.lotes.length > 0 && (
+                                                            <tr className="bg-brand-blue/5">
+                                                                <td colSpan={7} className="px-6 py-3">
+                                                                    <div className="flex flex-wrap items-center gap-2">
+                                                                        <span className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-blue mr-1">Stock actual repartido en:</span>
+                                                                        {r.lotes.map(l => (
+                                                                            <span key={l.lote + l.fecha} className="inline-flex items-center gap-2 text-[11px] font-bold font-mono bg-white/80 border border-line text-ink px-3 py-1 rounded-lg whitespace-nowrap" title={`Lote ${l.lote}`}>
+                                                                                <span className="text-brand-blue">{l.tomadas} und</span>
+                                                                                <span>USD ${l.costoUsd.toLocaleString('es-CO')}</span>
+                                                                                {l.trm > 1 && <span className="text-muted">TRM {l.trm.toLocaleString('es-CO')}</span>}
+                                                                                <span className="text-faint">{l.lote} · {fmtFecha(l.fecha)}</span>
+                                                                            </span>
+                                                                        ))}
+                                                                        {r.cubiertas < r.stock && <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">{r.stock - r.cubiertas} und sin ingreso en la app</span>}
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )}
                                                         </React.Fragment>
                                                     );
                                                 })}
