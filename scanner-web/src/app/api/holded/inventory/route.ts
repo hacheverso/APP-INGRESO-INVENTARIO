@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSession } from '@/lib/auth';
-import { isHoldedConfigured, listHoldedInventory } from '@/lib/holded';
+import { isHoldedConfigured, listHoldedInventory, getHoldedLastSales } from '@/lib/holded';
 import { calcularCostoPonderado, Lote } from '@/lib/costing';
 
 export const dynamic = 'force-dynamic';
@@ -18,8 +18,13 @@ export async function GET() {
             return NextResponse.json({ success: false, error: 'HOLDED_API_KEY no está configurada en el servidor' }, { status: 500 });
         }
 
-        // 1. Stock y precio desde Holded (solo lo que tiene unidades)
-        const inventario = (await listHoldedInventory()).filter(p => p.stock > 0);
+        // 1. Stock y precio desde Holded (solo lo que tiene unidades) + últimas ventas (últimos 2 años)
+        const DOS_ANIOS_MS = 730 * 24 * 60 * 60 * 1000;
+        const [inventarioCompleto, ventas] = await Promise.all([
+            listHoldedInventory(),
+            getHoldedLastSales(Date.now() - DOS_ANIOS_MS),
+        ]);
+        const inventario = inventarioCompleto.filter(p => p.stock > 0);
 
         // 2. Catálogo local (imagen, nombre curado, vínculo por holdedId o barcode)
         const productos = await prisma.product.findMany({ where: { userId: authSession.userId } });
@@ -62,7 +67,15 @@ export async function GET() {
             const upc = local?.upc || item.barcode || '';
             const lotes = upc ? (lotesPorUpc.get(upc) || []) : [];
             const costo = calcularCostoPonderado(lotes, item.stock);
+            // Última venta: por id de producto, si no por SKU, si no por nombre (Holded no siempre vincula la línea)
+            const ventaTs = ventas.byProductId.get(item.id)
+                || (item.sku ? ventas.bySku.get(item.sku.toUpperCase()) : undefined)
+                || (local?.sku ? ventas.bySku.get(local.sku.toUpperCase()) : undefined)
+                || (item.name ? ventas.byName.get(item.name.toUpperCase()) : undefined)
+                || null;
             return {
+                ultimaVenta: ventaTs ? new Date(ventaTs).toISOString() : null,
+                ultimaLlegada: lotes[0]?.fecha || null,
                 holdedId: item.id,
                 upc,
                 nombre: local?.name || item.name,
@@ -79,7 +92,7 @@ export async function GET() {
             };
         }).sort((a, b) => (b.stock * (b.costoUsd || 0)) - (a.stock * (a.costoUsd || 0)) || b.stock - a.stock);
 
-        return NextResponse.json({ success: true, count: rows.length, fetchedAt: new Date().toISOString(), data: rows });
+        return NextResponse.json({ success: true, count: rows.length, fetchedAt: new Date().toISOString(), ventasConsultadas: ventas.documentos, data: rows });
     } catch (error: any) {
         console.error('Error consultando inventario de Holded:', error);
         return NextResponse.json({ success: false, error: error?.message || 'Error inesperado' }, { status: 500 });

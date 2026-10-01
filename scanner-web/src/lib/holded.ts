@@ -145,12 +145,12 @@ interface HoldedListItem {
     [key: string]: any;
 }
 
-async function holdedGetList(apiKey: string, path: string): Promise<HoldedListItem[]> {
+async function holdedGetList(apiKey: string, path: string, maxPages: number = MAX_LIST_PAGES): Promise<HoldedListItem[]> {
     const all: HoldedListItem[] = [];
     const seenIds = new Set<string>();
     const separator = path.includes('?') ? '&' : '?';
 
-    for (let page = 1; page <= MAX_LIST_PAGES; page++) {
+    for (let page = 1; page <= maxPages; page++) {
         const res = await fetch(`${HOLDED_API_BASE}${path}${separator}page=${page}`, {
             headers: { 'key': apiKey },
             signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -227,6 +227,56 @@ export async function listHoldedInventory(): Promise<HoldedInventoryItem[]> {
         stock: Number(p.stock) || 0,
         price: Number(p.price) || 0,
     }));
+}
+
+/**
+ * Última fecha de venta por producto según los documentos de venta de Holded
+ * (facturas y tickets de venta) desde una fecha dada. Devuelve mapas indexados por
+ * productId, por SKU y por nombre para poder cruzar aunque la línea no traiga productId.
+ * Nunca lanza: si un tipo de documento falla, se ignora y se sigue con el resto.
+ */
+export interface HoldedLastSales {
+    byProductId: Map<string, number>; // unix ms
+    bySku: Map<string, number>;
+    byName: Map<string, number>;
+    documentos: number;
+}
+export async function getHoldedLastSales(sinceTs: number): Promise<HoldedLastSales> {
+    const apiKey = process.env.HOLDED_API_KEY;
+    const out: HoldedLastSales = { byProductId: new Map(), bySku: new Map(), byName: new Map(), documentos: 0 };
+    if (!apiKey) return out;
+
+    const startSec = Math.floor(sinceTs / 1000);
+    const bump = (map: Map<string, number>, key: string, ts: number) => {
+        const k = key.trim();
+        if (!k) return;
+        const prev = map.get(k) || 0;
+        if (ts > prev) map.set(k, ts);
+    };
+
+    for (const tipo of ['invoice', 'salesreceipt']) {
+        let docs: HoldedListItem[] = [];
+        try {
+            docs = await holdedGetList(apiKey, `/documents/${tipo}?starttmp=${startSec}`, 60);
+        } catch (e) {
+            console.warn(`No se pudieron listar documentos ${tipo} de Holded:`, (e as any)?.message);
+            continue;
+        }
+        for (const d of docs) {
+            const rawDate = Number(d.date);
+            if (!isFinite(rawDate) || rawDate <= 0) continue;
+            const ts = rawDate < 1e12 ? rawDate * 1000 : rawDate; // Holded entrega segundos
+            if (ts < sinceTs) continue;
+            out.documentos++;
+            const lines: any[] = Array.isArray(d.products) ? d.products : (Array.isArray(d.items) ? d.items : []);
+            for (const line of lines) {
+                if (line?.productId) bump(out.byProductId, String(line.productId), ts);
+                if (line?.sku) bump(out.bySku, String(line.sku).toUpperCase(), ts);
+                if (line?.name) bump(out.byName, String(line.name).toUpperCase(), ts);
+            }
+        }
+    }
+    return out;
 }
 
 /** Actualiza únicamente el precio de venta de un producto en Holded. */
