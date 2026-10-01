@@ -11,8 +11,10 @@
     },
     "dependencies": {
         "@prisma/client": "5.22.0",
+        "@types/jsbarcode": "^3.11.4",
         "bcryptjs": "^3.0.3",
         "jose": "^6.2.2",
+        "jsbarcode": "^3.12.3",
         "lucide-react": "^0.479.0",
         "next": "16.1.6",
         "papaparse": "^5.5.3",
