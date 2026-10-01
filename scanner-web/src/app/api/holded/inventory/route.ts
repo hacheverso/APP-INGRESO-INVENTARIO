@@ -1,64 +1,81 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSession } from '@/lib/auth';
-import { isHoldedConfigured, listHoldedInventory, getHoldedLastSales } from '@/lib/holded';
+import { isHoldedConfigured, listHoldedInventory, listHoldedSalesDocs } from '@/lib/holded';
 import { calcularCostoPonderado, Lote } from '@/lib/costing';
 
 export const dynamic = 'force-dynamic';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
-const BACKFILL_MS = 730 * DIA_MS;  // primera sincronización: 2 años de ventas
-const SOLAPE_MS = 2 * DIA_MS;      // siguientes: desde la última sync menos 2 días (por documentos editados/tardíos)
+const BACKFILL_MS = 730 * DIA_MS;       // primera sincronización o reconstrucción: 2 años de ventas
+const SOLAPE_MS = 2 * DIA_MS;           // incremental: desde la última sync menos 2 días
+const RECONCILIAR_CADA_MS = DIA_MS;      // una vez al día se revisa la ventana reciente completa
+const VENTANA_RECONCILIACION_MS = 90 * DIA_MS; // ...para detectar facturas borradas o editadas
 const LOTE_UPSERT = 200;
 
 /**
- * Sincroniza el índice local de últimas ventas con Holded de forma incremental
- * y devuelve mapas por holdedId / SKU / nombre leídos de la base de datos.
- * Así, tras la primera carga, cada apertura del inventario pide a Holded solo los documentos nuevos.
+ * Sincroniza las ventas de Holded en la tabla local HoldedSaleDoc y devuelve mapas
+ * de última venta por holdedId / SKU / nombre.
+ *
+ * - Incremental (cada carga): solo documentos nuevos o modificados recientemente.
+ * - Reconciliación (una vez al día, o si se pide reconstruir): vuelve a listar la ventana
+ *   completa y elimina los documentos que Holded ya no devuelve (facturas borradas),
+ *   reemplazando los editados (cantidades, productos, fecha).
  */
-async function sincronizarVentas(userId: string) {
+async function sincronizarVentas(userId: string, reconstruir: boolean) {
     const estado = await prisma.holdedSyncState.findUnique({ where: { userId } });
-    const desde = estado?.salesSyncedAt ? estado.salesSyncedAt.getTime() - SOLAPE_MS : Date.now() - BACKFILL_MS;
-    const inicio = Date.now();
-    const ventas = await getHoldedLastSales(desde);
+    const ahora = Date.now();
+    let desde: number;
+    let reconciliar: boolean;
+    if (reconstruir || !estado?.salesSyncedAt) {
+        desde = ahora - BACKFILL_MS; reconciliar = true;
+    } else if (!estado.salesReconciledAt || ahora - estado.salesReconciledAt.getTime() > RECONCILIAR_CADA_MS) {
+        desde = ahora - VENTANA_RECONCILIACION_MS; reconciliar = true;
+    } else {
+        desde = estado.salesSyncedAt.getTime() - SOLAPE_MS; reconciliar = false;
+    }
 
-    const entradas: { key: string; ts: number }[] = [];
-    ventas.byProductId.forEach((ts, id) => entradas.push({ key: `pid:${id}`, ts }));
-    ventas.bySku.forEach((ts, sku) => entradas.push({ key: `sku:${sku}`, ts }));
-    ventas.byName.forEach((ts, name) => entradas.push({ key: `name:${name}`, ts }));
+    const { docs, errores } = await listHoldedSalesDocs(desde);
 
-    // Guardar solo si la venta es más reciente que la ya indexada
-    const existentes = entradas.length
-        ? await prisma.holdedSalesIndex.findMany({ where: { userId, key: { in: entradas.map(e => e.key) } }, select: { key: true, lastSaleAt: true } })
-        : [];
-    const actual = new Map(existentes.map(e => [e.key, e.lastSaleAt.getTime()]));
-    const nuevas = entradas.filter(e => e.ts > (actual.get(e.key) || 0));
-    for (let i = 0; i < nuevas.length; i += LOTE_UPSERT) {
-        await prisma.$transaction(nuevas.slice(i, i + LOTE_UPSERT).map(e => prisma.holdedSalesIndex.upsert({
-            where: { userId_key: { userId, key: e.key } },
-            create: { userId, key: e.key, lastSaleAt: new Date(e.ts) },
-            update: { lastSaleAt: new Date(e.ts) },
+    // Reemplazar cada documento completo (así una factura editada queda con sus líneas nuevas)
+    for (let i = 0; i < docs.length; i += LOTE_UPSERT) {
+        await prisma.$transaction(docs.slice(i, i + LOTE_UPSERT).map(d => prisma.holdedSaleDoc.upsert({
+            where: { userId_docId: { userId, docId: d.docId } },
+            create: { userId, docId: d.docId, tipo: d.tipo, date: new Date(d.date), keys: d.keys },
+            update: { tipo: d.tipo, date: new Date(d.date), keys: d.keys },
         })));
     }
 
-    // Avanzar el cursor solo si Holded respondió todos los tipos de documento
-    if (ventas.errores === 0) {
+    let borrados = 0;
+    if (errores === 0) {
+        if (reconciliar) {
+            // Lo que está en la ventana y Holded ya no devolvió, fue borrado allá
+            const vivos = docs.map(d => d.docId);
+            const r = await prisma.holdedSaleDoc.deleteMany({ where: { userId, date: { gte: new Date(desde) }, docId: { notIn: vivos } } });
+            borrados = r.count;
+        }
         await prisma.holdedSyncState.upsert({
             where: { userId },
-            create: { userId, salesSyncedAt: new Date(inicio) },
-            update: { salesSyncedAt: new Date(inicio) },
+            create: { userId, salesSyncedAt: new Date(ahora), salesReconciledAt: reconciliar ? new Date(ahora) : null },
+            update: { salesSyncedAt: new Date(ahora), ...(reconciliar ? { salesReconciledAt: new Date(ahora) } : {}) },
         });
     }
 
-    const indice = await prisma.holdedSalesIndex.findMany({ where: { userId }, select: { key: true, lastSaleAt: true } });
+    const todos = await prisma.holdedSaleDoc.findMany({ where: { userId }, select: { date: true, keys: true } });
     const byProductId = new Map<string, number>(), bySku = new Map<string, number>(), byName = new Map<string, number>();
-    for (const e of indice) {
-        const ts = e.lastSaleAt.getTime();
-        if (e.key.startsWith('pid:')) byProductId.set(e.key.slice(4), ts);
-        else if (e.key.startsWith('sku:')) bySku.set(e.key.slice(4), ts);
-        else if (e.key.startsWith('name:')) byName.set(e.key.slice(5), ts);
+    for (const d of todos) {
+        const ts = d.date.getTime();
+        for (const k of d.keys) {
+            const map = k.startsWith('pid:') ? byProductId : k.startsWith('sku:') ? bySku : k.startsWith('name:') ? byName : null;
+            if (!map) continue;
+            const val = k.slice(k.indexOf(':') + 1);
+            if (ts > (map.get(val) || 0)) map.set(val, ts);
+        }
     }
-    return { byProductId, bySku, byName, documentosNuevos: ventas.documentos, incremental: Boolean(estado?.salesSyncedAt), errores: ventas.errores };
+    return {
+        byProductId, bySku, byName,
+        info: { modo: reconstruir ? 'reconstruccion' : reconciliar ? 'reconciliacion' : 'incremental', documentos: docs.length, borrados, errores, totalDocs: todos.length },
+    };
 }
 
 /**
@@ -72,12 +89,14 @@ export async function GET(req: Request) {
         if (!isHoldedConfigured()) {
             return NextResponse.json({ success: false, error: 'HOLDED_API_KEY no está configurada en el servidor' }, { status: 500 });
         }
-        const force = new URL(req.url).searchParams.get('force') === '1';
+        const params = new URL(req.url).searchParams;
+        const force = params.get('force') === '1';
+        const rebuild = params.get('rebuild') === '1';
 
         // 1. Stock y precio desde Holded (con caché corto) + últimas ventas (índice local, sync incremental)
         const [inventarioCompleto, ventas] = await Promise.all([
             listHoldedInventory(force),
-            sincronizarVentas(authSession.userId),
+            sincronizarVentas(authSession.userId, rebuild),
         ]);
         const inventario = inventarioCompleto.filter(p => p.stock > 0);
 
@@ -151,7 +170,7 @@ export async function GET(req: Request) {
             success: true,
             count: rows.length,
             fetchedAt: new Date().toISOString(),
-            ventas: { documentosNuevos: ventas.documentosNuevos, incremental: ventas.incremental, errores: ventas.errores },
+            ventas: ventas.info,
             data: rows,
         });
     } catch (error: any) {

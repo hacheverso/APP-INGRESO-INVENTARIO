@@ -243,52 +243,44 @@ export async function listHoldedInventory(force = false): Promise<HoldedInventor
 }
 
 /**
- * Última fecha de venta por producto según los documentos de venta de Holded
- * (facturas y tickets de venta) desde una fecha dada. Devuelve mapas indexados por
- * productId, por SKU y por nombre para poder cruzar aunque la línea no traiga productId.
- * Nunca lanza: si un tipo de documento falla, se ignora y se sigue con el resto.
+ * Documentos de venta de Holded (facturas y tickets) desde una fecha, con las claves de
+ * producto de cada línea (id, SKU y nombre) para cruzarlos con el inventario.
+ * Nunca lanza: si un tipo de documento falla, se cuenta en `errores` y se sigue con el resto.
  */
-export interface HoldedLastSales {
-    byProductId: Map<string, number>; // unix ms
-    bySku: Map<string, number>;
-    byName: Map<string, number>;
-    documentos: number;
-    errores: number; // tipos de documento que no se pudieron listar
+export interface HoldedSaleDocLite {
+    docId: string;
+    tipo: string;
+    date: number;   // unix ms
+    keys: string[]; // "pid:<id>" | "sku:<SKU>" | "name:<NOMBRE>"
 }
-export async function getHoldedLastSales(sinceTs: number): Promise<HoldedLastSales> {
+export async function listHoldedSalesDocs(sinceTs: number): Promise<{ docs: HoldedSaleDocLite[]; errores: number }> {
     const apiKey = process.env.HOLDED_API_KEY;
-    const out: HoldedLastSales = { byProductId: new Map(), bySku: new Map(), byName: new Map(), documentos: 0, errores: 0 };
+    const out = { docs: [] as HoldedSaleDocLite[], errores: 0 };
     if (!apiKey) return out;
 
     const startSec = Math.floor(sinceTs / 1000);
-    const bump = (map: Map<string, number>, key: string, ts: number) => {
-        const k = key.trim();
-        if (!k) return;
-        const prev = map.get(k) || 0;
-        if (ts > prev) map.set(k, ts);
-    };
-
     for (const tipo of ['invoice', 'salesreceipt']) {
-        let docs: HoldedListItem[] = [];
+        let lista: HoldedListItem[] = [];
         try {
-            docs = await holdedGetList(apiKey, `/documents/${tipo}?starttmp=${startSec}`, 60);
+            lista = await holdedGetList(apiKey, `/documents/${tipo}?starttmp=${startSec}`, 60);
         } catch (e) {
             console.warn(`No se pudieron listar documentos ${tipo} de Holded:`, (e as any)?.message);
             out.errores++;
             continue;
         }
-        for (const d of docs) {
+        for (const d of lista) {
             const rawDate = Number(d.date);
             if (!isFinite(rawDate) || rawDate <= 0) continue;
             const ts = rawDate < 1e12 ? rawDate * 1000 : rawDate; // Holded entrega segundos
             if (ts < sinceTs) continue;
-            out.documentos++;
             const lines: any[] = Array.isArray(d.products) ? d.products : (Array.isArray(d.items) ? d.items : []);
+            const keys = new Set<string>();
             for (const line of lines) {
-                if (line?.productId) bump(out.byProductId, String(line.productId), ts);
-                if (line?.sku) bump(out.bySku, String(line.sku).toUpperCase(), ts);
-                if (line?.name) bump(out.byName, String(line.name).toUpperCase(), ts);
+                if (line?.productId) keys.add(`pid:${String(line.productId).trim()}`);
+                if (line?.sku) keys.add(`sku:${String(line.sku).trim().toUpperCase()}`);
+                if (line?.name) keys.add(`name:${String(line.name).trim().toUpperCase()}`);
             }
+            out.docs.push({ docId: String(d.id), tipo, date: ts, keys: Array.from(keys) });
         }
     }
     return out;

@@ -171,16 +171,19 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const [invLotesAbiertos, setInvLotesAbiertos] = useState<Record<string, boolean>>({}); // desglose de lotes por fila (oculto por defecto)
     const [invSavingId, setInvSavingId] = useState<string | null>(null);
 
-    const cargarInventario = async (forzar = false) => {
+    const cargarInventario = async (forzar = false, reconstruirVentas = false) => {
         if (invLoading) return; // evitar llamadas duplicadas a Holded
         setInvLoading(true);
         setInvError(null);
         try {
-            const res = await fetch(forzar ? '/api/holded/inventory?force=1' : '/api/holded/inventory');
+            const qs = [forzar ? 'force=1' : '', reconstruirVentas ? 'rebuild=1' : ''].filter(Boolean).join('&');
+            const res = await fetch('/api/holded/inventory' + (qs ? `?${qs}` : ''));
             const data = await res.json();
             if (data.success) {
                 setInvRows(data.data);
                 setInvFetchedAt(data.fetchedAt || new Date().toISOString());
+                if (reconstruirVentas) showToast(`Ventas reconstruidas desde Holded: ${data.ventas?.documentos ?? 0} documentos.`, 'success');
+                else if (data.ventas?.borrados > 0) showToast(`Ventas actualizadas: ${data.ventas.borrados} factura(s) borrada(s) en Holded ya no cuentan.`, 'info');
             } else {
                 setInvError(data.error || 'No se pudo consultar Holded');
             }
@@ -2633,6 +2636,14 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                 </button>
                                 <button onClick={() => cargarInventario(true)} disabled={invLoading} className="flex items-center gap-2 px-5 py-3 glass hover:bg-white rounded-xl text-xs font-black uppercase tracking-widest text-ink-soft transition-colors disabled:opacity-60">
                                     <RefreshCw size={14} className={invLoading ? 'animate-spin' : ''} /> {invLoading ? 'Consultando Holded...' : 'Actualizar'}
+                                </button>
+                                <button
+                                    onClick={() => { if (confirm('Esto vuelve a leer en Holded las facturas y tickets de venta de los últimos 2 años para recalcular "Sin venta hace".\n\nÚsalo si borraste o editaste facturas antiguas. Tarda unos segundos y consume más llamadas a la API.\n\n¿Continuar?')) cargarInventario(true, true); }}
+                                    disabled={invLoading}
+                                    className="flex items-center gap-2 px-4 py-3 glass hover:bg-white rounded-xl text-[10px] font-black uppercase tracking-widest text-muted hover:text-ink transition-colors disabled:opacity-60"
+                                    title="Releer todas las ventas de los últimos 2 años en Holded (por facturas borradas o editadas hace tiempo)"
+                                >
+                                    <History size={13} /> Resincronizar ventas
                                 </button>
                             </div>
                         </div>

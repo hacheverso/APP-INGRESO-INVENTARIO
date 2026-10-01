@@ -76,20 +76,36 @@ model HistoryRecord {
   createdAt DateTime @default(now())
 }
 
-// Índice local de últimas ventas por producto (Holded). Se sincroniza de forma
-// incremental: solo se piden a Holded los documentos nuevos desde la última sincronización.
+// Ventas de Holded guardadas por documento (factura / ticket). Permite detectar
+// facturas borradas o editadas: cada sincronización reemplaza el documento completo y la
+// reconciliación diaria elimina los que ya no existen en Holded dentro de la ventana revisada.
+model HoldedSaleDoc {
+  id        String   @id @default(cuid())
+  userId    String
+  docId     String   // id del documento en Holded
+  tipo      String   // invoice | salesreceipt
+  date      DateTime
+  keys      String[] // "pid:<holdedId>" | "sku:<SKU>" | "name:<NOMBRE>" de cada línea
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, docId])
+  @@index([userId, date])
+}
+
+model HoldedSyncState {
+  userId            String    @id
+  salesSyncedAt     DateTime?  // última sincronización incremental
+  salesReconciledAt DateTime?  // última reconciliación de la ventana reciente (detecta borrados/ediciones)
+  updatedAt         DateTime  @updatedAt
+}
+
+// (legado, ya no se usa; se conserva para no forzar un borrado de tabla en el despliegue)
 model HoldedSalesIndex {
   id         String   @id @default(cuid())
   userId     String
-  key        String   // "pid:<holdedId>" | "sku:<SKU>" | "name:<NOMBRE>"
+  key        String
   lastSaleAt DateTime
   updatedAt  DateTime @updatedAt
 
   @@unique([userId, key])
-}
-
-model HoldedSyncState {
-  userId        String    @id
-  salesSyncedAt DateTime?
-  updatedAt     DateTime  @updatedAt
 }
