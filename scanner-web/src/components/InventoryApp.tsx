@@ -1,14 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { BarChart3, Target, Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning, Search, LogOut, RefreshCw, Link2, Pencil, Check, ExternalLink, ClipboardPaste } from 'lucide-react';
+import { BarChart3, Target, Warehouse, Trash2, Download, AlertTriangle, CheckCircle, ScanLine, Settings2, PackageCheck, Eraser, Database, UploadCloud, Image as ImageIcon, PlusCircle, X, DollarSign, Calculator, Layers, ChevronDown, ChevronRight, Hash, AlignLeft, Tags, History, FolderOpen, Lock, Unlock, ArrowLeft, Box, Volume2, VolumeX, Save, ArrowUpRight, ArrowDownRight, FileDown, CloudLightning, Search, LogOut, RefreshCw, Link2, Pencil, Check, ExternalLink, ClipboardPaste } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { v4 as uuidv4 } from 'uuid';
 
 type ScanMode = 'UPC_SERIAL' | 'MASSIVE';
 type Currency = 'COP' | 'USD';
-export type AppView = 'SCANNER' | 'HISTORY' | 'PRODUCTS' | 'STATS' | 'CRUCE'; // Vistas con URL propia
+export type AppView = 'SCANNER' | 'HISTORY' | 'PRODUCTS' | 'STATS' | 'CRUCE' | 'INVENTARIO'; // Vistas con URL propia
 
 interface HistorySession {
     id: string; // Timestamp
@@ -86,7 +86,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const [currentUser, setCurrentUser] = useState<{ id: string; email: string; name?: string } | null>(null);
 
     // Cada vista tiene URL propia: al navegar se actualiza la ruta y al recargar se conserva la vista
-    const VIEW_PATHS: Record<AppView, string> = { SCANNER: '/', HISTORY: '/historial', PRODUCTS: '/productos', STATS: '/estadisticas', CRUCE: '/cruce' };
+    const VIEW_PATHS: Record<AppView, string> = { SCANNER: '/', HISTORY: '/historial', PRODUCTS: '/productos', STATS: '/estadisticas', CRUCE: '/cruce', INVENTARIO: '/inventario' };
     // Traer las sesiones frescas del servidor (clave para trabajar desde varios dispositivos)
     const refreshSessions = async (): Promise<HistorySession[] | null> => {
         try {
@@ -108,6 +108,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         // desde otros dispositivos (la lista solo se cargaba al abrir la app)
         if (v === 'HISTORY' || v === 'STATS') refreshSessions();
         if (v === 'CRUCE') setMetaTotalInput(metaTotal !== null ? String(metaTotal) : '');
+        if (v === 'INVENTARIO') cargarInventario();
         if (typeof window !== 'undefined' && window.location.pathname !== VIEW_PATHS[v]) {
             window.history.pushState({ view: v }, '', VIEW_PATHS[v]);
         }
@@ -146,6 +147,64 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const [showMetaModal, setShowMetaModal] = useState(false);
     const [metaTotalInput, setMetaTotalInput] = useState('');
     const [metaText, setMetaText] = useState('');
+
+    // Inventario activo según Holded + costo ponderado por lotes
+    interface InvRow {
+        holdedId: string; upc: string; nombre: string; sku: string; imagen: string; categoria: string;
+        stock: number; precio: number; costoUsd: number | null; costoCop: number | null; cubiertas: number;
+        lotes: { lote: string; fecha: string; tomadas: number; costoUsd: number; trm: number }[];
+        ultimoLote: { lote: string; fecha: string; costoUsd: number } | null;
+    }
+    const [invRows, setInvRows] = useState<InvRow[] | null>(null);
+    const [invLoading, setInvLoading] = useState(false);
+    const [invError, setInvError] = useState<string | null>(null);
+    const [invFetchedAt, setInvFetchedAt] = useState<string | null>(null);
+    const [invSearch, setInvSearch] = useState('');
+    const [invSavingId, setInvSavingId] = useState<string | null>(null);
+
+    const cargarInventario = async () => {
+        setInvLoading(true);
+        setInvError(null);
+        try {
+            const res = await fetch('/api/holded/inventory');
+            const data = await res.json();
+            if (data.success) {
+                setInvRows(data.data);
+                setInvFetchedAt(data.fetchedAt || new Date().toISOString());
+            } else {
+                setInvError(data.error || 'No se pudo consultar Holded');
+            }
+        } catch {
+            setInvError('Error de conexión al consultar el inventario');
+        } finally {
+            setInvLoading(false);
+        }
+    };
+
+    const guardarPrecio = async (row: InvRow, valor: string) => {
+        const precio = parseFloat(valor);
+        if (!isFinite(precio) || precio < 0) { showToast('Precio inválido.', 'error'); return; }
+        if (precio === row.precio) return;
+        setInvSavingId(row.holdedId);
+        try {
+            const res = await fetch('/api/holded/price', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ holdedId: row.holdedId, price: precio })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setInvRows(prev => prev ? prev.map(r => r.holdedId === row.holdedId ? { ...r, precio } : r) : prev);
+                showToast(`Precio de "${row.nombre}" actualizado en Holded: ${formatMoney(precio, 'COP')}`, 'success');
+            } else {
+                showToast(`No se pudo actualizar el precio en Holded: ${data.error}`, 'error');
+            }
+        } catch {
+            showToast('Error de conexión al actualizar el precio.', 'error');
+        } finally {
+            setInvSavingId(null);
+        }
+    };
 
     // Categorías de producto: las creadas por el usuario + las ya usadas en el catálogo
     const [categoriasList, setCategoriasList] = useState<string[]>([]);
@@ -336,6 +395,12 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const safeGetItem = (key: string): string | null => {
         try { return localStorage.getItem(key); } catch { return null; }
     };
+
+    // Carga del inventario cuando se entra por URL directa a /inventario
+    useEffect(() => {
+        if (isClient && view === 'INVENTARIO' && invRows === null && !invLoading) cargarInventario();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isClient, view]);
 
     // Manejo de LocalStorage Backup
     useEffect(() => {
@@ -2345,6 +2410,9 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                             <button onClick={() => navigateTo('PRODUCTS')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all border-l border-line ${view === 'PRODUCTS' ? 'bg-brand-blue/20 text-brand-blue' : 'text-muted hover:text-ink-soft hover:bg-ink/5'}`} title="Catálogo de Productos">
                                 <PackageCheck size={14} /> Productos
                             </button>
+                            <button onClick={() => navigateTo('INVENTARIO')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all border-l border-line ${view === 'INVENTARIO' ? 'bg-brand-blue/20 text-brand-blue' : 'text-muted hover:text-ink-soft hover:bg-ink/5'}`} title="Inventario activo en Holded con costo ponderado">
+                                <Warehouse size={14} /> Inventario
+                            </button>
                             <button onClick={() => navigateTo('HISTORY')} className={`flex items-center gap-2 px-4 py-2 font-black text-[10px] sm:text-xs uppercase tracking-wider transition-all border-l border-line ${view === 'HISTORY' ? 'bg-brand-blue/20 text-brand-blue' : 'text-muted hover:text-ink-soft hover:bg-ink/5'}`} title="Ver Historial">
                                 <History size={14} /> Historial
                             </button>
@@ -2396,7 +2464,164 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
             {/* Container Principal Condicionado a la Vista */}
             <main className="flex-1 flex flex-col lg:flex-row gap-6 py-6 px-4 md:px-6 2xl:px-10 w-full min-h-0 overflow-hidden">
 
-                {view === 'CRUCE' ? (
+                {view === 'INVENTARIO' ? (() => {
+                    const fmtFecha = (iso: string) => { const d = new Date(iso); return isNaN(d.getTime()) ? '' : `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`; };
+                    const term = invSearch.trim().toLowerCase();
+                    const filas = (invRows || []).filter(r => !term || r.nombre.toLowerCase().includes(term) || r.upc.includes(term) || (r.sku || '').toLowerCase().includes(term) || (r.categoria || '').toLowerCase().includes(term));
+                    const totalUnidades = (invRows || []).reduce((a, r) => a + r.stock, 0);
+                    const valorUsd = (invRows || []).reduce((a, r) => a + (r.costoUsd !== null ? r.costoUsd * r.cubiertas : 0), 0);
+                    const valorCop = (invRows || []).reduce((a, r) => a + (r.costoCop !== null ? r.costoCop * r.cubiertas : 0), 0);
+                    const valorVenta = (invRows || []).reduce((a, r) => a + r.precio * r.stock, 0);
+                    const sinCosto = (invRows || []).filter(r => r.costoUsd === null).length;
+                    return (
+                    <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
+                        <div className="flex items-center justify-between gap-4 flex-wrap mb-2">
+                            <div className="flex items-center gap-3 text-ink">
+                                <Warehouse size={24} className="text-brand-blue" />
+                                <div>
+                                    <h2 className="font-display text-2xl tracking-[0.08em] uppercase leading-none">Inventario</h2>
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted mt-1">Stock activo en Holded · costo ponderado por lotes de INGRESADOS{invFetchedAt ? ` · actualizado ${new Date(invFetchedAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}` : ''}</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3 flex-wrap">
+                                <div className="relative">
+                                    <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
+                                    <input type="text" value={invSearch} onChange={e => setInvSearch(e.target.value)} placeholder="Buscar producto, UPC, SKU o categoría..." className="w-[320px] bg-white/70 border border-line rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-1 focus:ring-brand-blue transition-all font-medium text-ink placeholder-faint" />
+                                </div>
+                                <button onClick={cargarInventario} disabled={invLoading} className="flex items-center gap-2 px-5 py-3 glass hover:bg-white rounded-xl text-xs font-black uppercase tracking-widest text-ink-soft transition-colors disabled:opacity-60">
+                                    <RefreshCw size={14} className={invLoading ? 'animate-spin' : ''} /> {invLoading ? 'Consultando Holded...' : 'Actualizar'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {invError ? (
+                            <div className="glass rounded-3xl p-8 flex flex-col items-center text-center gap-3">
+                                <AlertTriangle size={36} className="text-red-600" />
+                                <p className="font-bold text-ink">No se pudo consultar el inventario de Holded</p>
+                                <p className="text-xs text-muted max-w-md">{invError}</p>
+                                <button onClick={cargarInventario} className="mt-2 px-5 py-2.5 bg-brand-blue hover:bg-brand-blue-hover text-white font-black text-xs uppercase tracking-widest rounded-xl">Reintentar</button>
+                            </div>
+                        ) : invRows === null ? (
+                            <div className="glass rounded-3xl p-14 flex flex-col items-center justify-center text-center opacity-70">
+                                <RefreshCw size={36} className="text-brand-blue animate-spin mb-4" />
+                                <p className="text-muted font-bold uppercase tracking-widest text-sm">Consultando el inventario en Holded...</p>
+                            </div>
+                        ) : (
+                            <>
+                                {/* KPIs */}
+                                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+                                    <div className="col-span-2 bg-brand-green rounded-3xl p-5 flex flex-col justify-between shadow-[0_12px_32px_rgba(91,202,45,0.35)] min-h-[120px]">
+                                        <span className="text-[10px] font-black uppercase tracking-[0.14em] text-ink/70">Valor del inventario a costo (COP)</span>
+                                        <span className="font-tech text-3xl xl:text-4xl text-ink leading-none">{formatMoney(Math.round(valorCop), 'COP')}</span>
+                                        <span className="text-[10px] font-bold text-ink/60 uppercase tracking-wider mt-1">≈ {formatMoney(Math.round(valorUsd), 'USD')} a costo USD</span>
+                                    </div>
+                                    <div className="glass rounded-3xl p-5 flex flex-col justify-between min-h-[120px]">
+                                        <span className="text-[10px] font-black uppercase tracking-[0.14em] text-muted">Unidades en stock</span>
+                                        <span className="font-tech text-3xl text-ink leading-none">{totalUnidades.toLocaleString('es-CO')}</span>
+                                        <span className="text-[10px] font-bold text-muted uppercase tracking-wider">{invRows.length} productos</span>
+                                    </div>
+                                    <div className="glass rounded-3xl p-5 flex flex-col justify-between min-h-[120px]">
+                                        <span className="text-[10px] font-black uppercase tracking-[0.14em] text-muted">Valor a precio de venta</span>
+                                        <span className="font-tech text-2xl text-ink leading-none">{formatMoney(Math.round(valorVenta), 'COP')}</span>
+                                        {valorCop > 0 && valorVenta > 0 && <span className="text-[10px] font-bold text-brand-green-ink uppercase tracking-wider">margen {(((valorVenta - valorCop) / valorVenta) * 100).toFixed(0)}%</span>}
+                                    </div>
+                                    <div className="glass rounded-3xl p-5 flex flex-col justify-between min-h-[120px]">
+                                        <span className="text-[10px] font-black uppercase tracking-[0.14em] text-muted">Sin costo conocido</span>
+                                        <span className={`font-tech text-3xl leading-none ${sinCosto > 0 ? 'text-amber-700' : 'text-ink'}`}>{sinCosto}</span>
+                                        <span className="text-[10px] font-bold text-muted uppercase tracking-wider">sin ingresos en la app</span>
+                                    </div>
+                                </div>
+
+                                {/* Tabla */}
+                                <div className="glass rounded-3xl overflow-hidden pb-2 mb-12">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left text-sm">
+                                            <thead>
+                                                <tr className="text-muted uppercase tracking-wider text-[10px] border-b border-line">
+                                                    <th className="px-6 py-4 font-black">Producto</th>
+                                                    <th className="px-4 py-4 font-black text-right">Stock</th>
+                                                    <th className="px-4 py-4 font-black text-right">Costo pond. USD</th>
+                                                    <th className="px-4 py-4 font-black text-right">Costo pond. COP</th>
+                                                    <th className="px-4 py-4 font-black">Lotes que lo componen</th>
+                                                    <th className="px-4 py-4 font-black text-right">Precio venta (Holded)</th>
+                                                    <th className="px-6 py-4 font-black text-right">Margen</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-line/60">
+                                                {filas.map(r => {
+                                                    const margen = r.costoCop !== null && r.precio > 0 ? ((r.precio - r.costoCop) / r.precio) * 100 : null;
+                                                    return (
+                                                        <tr key={r.holdedId} className="hover:bg-ink/5 transition-colors">
+                                                            <td className="px-6 py-3">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="w-11 h-11 bg-white rounded-lg border border-line overflow-hidden flex items-center justify-center shrink-0">
+                                                                        {r.imagen && (r.imagen.startsWith('http') || r.imagen.startsWith('data:')) ? <img src={r.imagen} alt="" className="max-w-full max-h-full object-contain" /> : <ImageIcon size={16} className="text-muted" />}
+                                                                    </div>
+                                                                    <div className="min-w-0">
+                                                                        <span className="font-bold text-ink block truncate max-w-[300px]" title={r.nombre}>{r.nombre}</span>
+                                                                        <span className="text-[10px] font-mono text-muted">{r.sku || r.upc}{r.categoria ? ` · ${r.categoria}` : ''}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right font-tech text-xl text-ink">{r.stock}</td>
+                                                            <td className="px-4 py-3 text-right font-mono font-black text-ink whitespace-nowrap">
+                                                                {r.costoUsd !== null ? `USD $${r.costoUsd.toLocaleString('es-CO')}` : <span className="text-faint">—</span>}
+                                                                {r.costoUsd !== null && r.cubiertas < r.stock && (
+                                                                    <span className="block text-[9px] font-bold uppercase tracking-wider text-amber-700" title="Hay más unidades en stock que las ingresadas por la app; el costo se calcula sobre las que sí tienen historial">sobre {r.cubiertas} de {r.stock} und</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right font-mono font-black text-brand-green-ink whitespace-nowrap">
+                                                                {r.costoCop !== null ? formatMoney(r.costoCop, 'COP') : <span className="text-faint" title="Algún lote entró en USD sin TRM">—</span>}
+                                                            </td>
+                                                            <td className="px-4 py-3">
+                                                                <div className="flex flex-wrap gap-1 max-w-[260px]">
+                                                                    {r.lotes.length === 0 ? (
+                                                                        <span className="text-[10px] text-faint uppercase font-bold tracking-wider">sin ingresos</span>
+                                                                    ) : r.lotes.map(l => (
+                                                                        <span key={l.lote + l.fecha} className="text-[9px] font-bold font-mono bg-white/70 border border-line text-ink-soft px-2 py-0.5 rounded-md whitespace-nowrap" title={`${l.lote} · ${fmtFecha(l.fecha)} · ${l.tomadas} und a USD $${l.costoUsd}${l.trm > 1 ? ` · TRM ${l.trm}` : ''}`}>
+                                                                            {l.tomadas}× ${l.costoUsd} <span className="text-faint">· {fmtFecha(l.fecha)}</span>
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right">
+                                                                <div className="inline-flex items-center gap-1 bg-white/80 border border-line rounded-xl px-3 py-1.5 focus-within:ring-2 focus-within:ring-brand-blue">
+                                                                    <span className="text-muted text-xs font-bold">$</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        key={`${r.holdedId}-${r.precio}`}
+                                                                        defaultValue={r.precio}
+                                                                        disabled={invSavingId === r.holdedId}
+                                                                        onBlur={e => guardarPrecio(r, e.target.value)}
+                                                                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                                                                        onWheel={e => e.currentTarget.blur()}
+                                                                        className="w-[110px] bg-transparent outline-none text-right font-mono font-black text-ink [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-50"
+                                                                        title="Edita y presiona Enter (o sal del campo) para guardar en Holded"
+                                                                    />
+                                                                    {invSavingId === r.holdedId && <RefreshCw size={12} className="animate-spin text-brand-blue" />}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-3 text-right">
+                                                                {margen === null ? <span className="text-faint">—</span> : (
+                                                                    <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border ${margen < 0 ? 'text-red-700 bg-red-500/10 border-red-500/40' : margen < 10 ? 'text-amber-700 bg-amber-500/10 border-amber-500/40' : 'text-brand-green-ink bg-brand-green/10 border-brand-green/40'}`}>{margen.toFixed(0)}%</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                                {filas.length === 0 && (
+                                                    <tr><td colSpan={7} className="px-6 py-10 text-center text-muted font-bold uppercase tracking-widest text-xs">{invRows.length === 0 ? 'Holded no reporta productos con stock' : 'Sin resultados para la búsqueda'}</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                    );
+                })() : view === 'CRUCE' ? (
                     <div className="flex-1 flex flex-col gap-6 w-full animate-in fade-in duration-300 overflow-y-auto pr-2 custom-scrollbar h-[800px] xl:h-[calc(100vh-140px)] min-h-0">
                         <div className="flex items-center gap-3 text-ink mb-2">
                             <Target size={24} className="text-brand-blue" />

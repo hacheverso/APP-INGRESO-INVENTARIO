@@ -205,6 +205,52 @@ export async function findHoldedProductsByBarcode(barcode: string): Promise<Arra
         .map(p => ({ id: p.id, name: p.name || '', sku: String(p.sku || ''), barcode: String(p.barcode || '') }));
 }
 
+/** Inventario de Holded: todos los productos con su stock y precio de venta. */
+export interface HoldedInventoryItem {
+    id: string;
+    name: string;
+    sku: string;
+    barcode: string;
+    stock: number;
+    price: number;
+}
+export async function listHoldedInventory(): Promise<HoldedInventoryItem[]> {
+    const apiKey = process.env.HOLDED_API_KEY;
+    if (!apiKey) throw new Error('HOLDED_API_KEY no está configurada en el servidor');
+
+    const products = await holdedGetList(apiKey, '/products');
+    return products.map(p => ({
+        id: p.id,
+        name: p.name || '',
+        sku: String(p.sku || ''),
+        barcode: String(p.barcode || '').trim(),
+        stock: Number(p.stock) || 0,
+        price: Number(p.price) || 0,
+    }));
+}
+
+/** Actualiza únicamente el precio de venta de un producto en Holded. */
+export async function updateHoldedPrice(holdedId: string, price: number): Promise<HoldedSyncResult> {
+    const apiKey = process.env.HOLDED_API_KEY;
+    if (!apiKey) return { ok: false, error: 'HOLDED_API_KEY no está configurada en el servidor' };
+    try {
+        const res = await fetch(`${HOLDED_API_BASE}/products/${holdedId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'key': apiKey },
+            body: JSON.stringify({ price }),
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        const data: any = await res.json().catch(() => null);
+        if (!res.ok || (data && data.status === 0)) {
+            return { ok: false, error: `Holded rechazó el precio: ${data?.info || data?.message || `HTTP ${res.status}`}` };
+        }
+        return { ok: true, holdedId, action: 'updated' };
+    } catch (error: any) {
+        const detail = error?.name === 'TimeoutError' ? 'timeout de conexión' : (error?.message || 'error de red');
+        return { ok: false, error: `No se pudo conectar con Holded: ${detail}` };
+    }
+}
+
 /** Devuelve un mapa barcode → productId con todos los productos de Holded. */
 export async function getHoldedProductsByBarcode(): Promise<Map<string, string>> {
     const apiKey = process.env.HOLDED_API_KEY;
