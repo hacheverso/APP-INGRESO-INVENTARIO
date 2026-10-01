@@ -137,6 +137,8 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const [matchedProduct, setMatchedProduct] = useState<Product | null>(null);
     const [showNewProductModal, setShowNewProductModal] = useState(false);
     const [newProductForm, setNewProductForm] = useState({ UPC: '', NOMBRE: '', SKU: '', IMAGEN: '', CATEGORIA: '' });
+    type Condicion = 'N' | 'O' | 'U'; // Nuevo · Open Box · Usado → sufijo del SKU
+    const [newProductCondicion, setNewProductCondicion] = useState<Condicion>('N');
     const [productSearchTerm, setProductSearchTerm] = useState("");
     const [unknownUpc, setUnknownUpc] = useState<string | null>(null); // Product-not-found prompt
 
@@ -378,11 +380,17 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         }
     }, []);
 
-    // Set initial focus
+    // Foco al cerrar el modal / entrar al escáner: si ya hay un producto reconocido,
+    // el siguiente paso es el serial (o la cantidad), no volver al UPC.
     useEffect(() => {
-        if (isClient && upcRef.current && !showNewProductModal && view === 'SCANNER') {
-            upcRef.current.focus();
+        if (!isClient || showNewProductModal || view !== 'SCANNER') return;
+        if (matchedProduct) {
+            if (mode === 'UPC_SERIAL') serialRef.current?.focus();
+            else qtyRef.current?.focus();
+        } else {
+            upcRef.current?.focus();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isClient, showNewProductModal, view]);
 
     // Guardado seguro en localStorage: setItem LANZA si la cuota está llena (sesiones
@@ -955,8 +963,27 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         }
     };
 
+    // Producto usado / open box / sin código de barras: generar un UPC interno único
+    // (U + fecha + consecutivo del día, ej. U20261001-001) y abrir el formulario como USADO.
+    const iniciarProductoSinUpc = (condicion: Condicion = 'U') => {
+        const now = new Date();
+        const dayKey = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+        const prefix = `U${dayKey}-`;
+        let maxSeq = 0;
+        Object.keys(productDB).forEach(k => { const m = k.match(new RegExp(`^${prefix}(\\d{1,4})$`)); if (m) maxSeq = Math.max(maxSeq, parseInt(m[1], 10)); });
+        const codigo = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+        setUpc(codigo);
+        setUnknownUpc(null);
+        setMatchedProduct(null);
+        setNewProductCondicion(condicion);
+        setNewProductForm({ UPC: codigo, NOMBRE: '', SKU: '', IMAGEN: '', CATEGORIA: '' });
+        setShowNewProductModal(true);
+        showToast(`Código interno generado: ${codigo}. Escribe el nombre del producto.`, 'info');
+        setTimeout(() => modalNameRef.current?.focus(), 150);
+    };
+
     // Helper: Generador Inteligente de SKU
-    const generateSKU = (name: string) => {
+    const generateSKU = (name: string, condicion?: Condicion) => {
         if (!name) return "";
         let upperName = name.toUpperCase();
         // Condición del producto: -N nuevo, -O open box, -U usado
@@ -998,7 +1025,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
             return abv.substring(0, 4); // max 4 caracteres por palabra desconocida
         });
 
-        const suffix = isUsed ? "-U" : isOpenBox ? "-O" : "-N";
+        const suffix = condicion ? `-${condicion}` : (isUsed ? "-U" : isOpenBox ? "-O" : "-N");
         return skuParts.join('-') + suffix;
     };
 
@@ -1902,7 +1929,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                         setNewProductForm(prev => ({
                                             ...prev,
                                             NOMBRE: newName,
-                                            SKU: generateSKU(newName) // Auto-generar SKU al teclear
+                                            SKU: generateSKU(newName, newProductCondicion) // Auto-generar SKU al teclear
                                         }));
                                     }}
                                     onKeyDown={e => handleKeyDown(e, 'modal_submit')}
@@ -1918,6 +1945,17 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="md:col-span-2">
+                                    <label className={labelClass}>Condición del producto</label>
+                                    <div className="flex gap-2">
+                                        {([['N', 'Nuevo'], ['O', 'Open Box'], ['U', 'Usado']] as [Condicion, string][]).map(([c, label]) => (
+                                            <button key={c} type="button"
+                                                onClick={() => { setNewProductCondicion(c); setNewProductForm(prev => ({ ...prev, SKU: generateSKU(prev.NOMBRE, c) })); }}
+                                                className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider border transition-colors ${newProductCondicion === c ? (c === 'N' ? 'bg-brand-green text-ink border-brand-green' : c === 'O' ? 'bg-amber-500 text-ink border-amber-500' : 'bg-brand-blue text-white border-brand-blue') : 'bg-field text-muted border-line hover:bg-line'}`}
+                                            >{label}</button>
+                                        ))}
+                                    </div>
+                                </div>
                                 <div><label className={labelClass}>Referencia / Auto SKU</label><input type="text" value={newProductForm.SKU} onChange={e => setNewProductForm({ ...newProductForm, SKU: e.target.value })} onKeyDown={e => handleKeyDown(e, 'modal_submit')} className={`${inputClass} font-mono text-sm tracking-widest text-brand-blue uppercase`} placeholder="Generado Aut..." /></div>
                                 <div>
                                     <label className={labelClass}>Categoría</label>
@@ -3193,7 +3231,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                         <div className="flex justify-end gap-2 opacity-100 sm:opacity-50 group-hover:opacity-100 transition-opacity">
                                                             <button 
                                                                 onClick={() => {
-                                                                    setNewProductForm({ UPC: prod.UPC, NOMBRE: prod.NOMBRE, SKU: prod.SKU || '', IMAGEN: prod.IMAGEN || '', CATEGORIA: prod.CATEGORIA || '' });
+                                                                    setNewProductCondicion((prod.SKU || '').endsWith('-U') ? 'U' : (prod.SKU || '').endsWith('-O') ? 'O' : 'N'); setNewProductForm({ UPC: prod.UPC, NOMBRE: prod.NOMBRE, SKU: prod.SKU || '', IMAGEN: prod.IMAGEN || '', CATEGORIA: prod.CATEGORIA || '' });
                                                                     setShowNewProductModal(true);
                                                                 }} 
                                                                 className="p-2 bg-page hover:bg-brand-blue/20 text-muted hover:text-brand-blue rounded-lg transition-colors border border-line shadow-sm"
@@ -3402,7 +3440,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                             <div className="flex gap-3 pointer-events-auto">
                                                 <button
                                                     onClick={() => {
-                                                        setNewProductForm({ UPC: unknownUpc, NOMBRE: '', SKU: '', IMAGEN: '', CATEGORIA: '' });
+                                                        setNewProductCondicion('N'); setNewProductForm({ UPC: unknownUpc, NOMBRE: '', SKU: '', IMAGEN: '', CATEGORIA: '' });
                                                         setShowNewProductModal(true);
                                                         setUnknownUpc(null);
                                                         setTimeout(() => modalNameRef.current?.focus(), 100);
@@ -3446,6 +3484,17 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
 
                                 {/* Bottom Label Absoluto */}
                                 <span className="absolute bottom-8 text-faint font-bold tracking-[0.2em] uppercase text-[10px]">Paso 1: Identificar Producto</span>
+
+                                {/* Usado / sin UPC: genera un código interno y abre el formulario */}
+                                {!matchedProduct && !unknownUpc && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); iniciarProductoSinUpc('U'); }}
+                                        className="absolute top-6 left-6 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-blue/10 hover:bg-brand-blue hover:text-white text-brand-blue border border-brand-blue/30 text-[10px] font-black uppercase tracking-widest transition-colors z-30"
+                                        title="Producto usado, open box o sin código de barras: genera un UPC interno automáticamente"
+                                    >
+                                        <PlusCircle size={14} /> Usado / sin UPC
+                                    </button>
+                                )}
 
                                 {/* Candado Fijo Esquina Derecha */}
                                 <button
