@@ -6,23 +6,78 @@ import { calcularCostoPonderado, Lote } from '@/lib/costing';
 
 export const dynamic = 'force-dynamic';
 
+const DIA_MS = 24 * 60 * 60 * 1000;
+const BACKFILL_MS = 730 * DIA_MS;  // primera sincronización: 2 años de ventas
+const SOLAPE_MS = 2 * DIA_MS;      // siguientes: desde la última sync menos 2 días (por documentos editados/tardíos)
+const LOTE_UPSERT = 200;
+
+/**
+ * Sincroniza el índice local de últimas ventas con Holded de forma incremental
+ * y devuelve mapas por holdedId / SKU / nombre leídos de la base de datos.
+ * Así, tras la primera carga, cada apertura del inventario pide a Holded solo los documentos nuevos.
+ */
+async function sincronizarVentas(userId: string) {
+    const estado = await prisma.holdedSyncState.findUnique({ where: { userId } });
+    const desde = estado?.salesSyncedAt ? estado.salesSyncedAt.getTime() - SOLAPE_MS : Date.now() - BACKFILL_MS;
+    const inicio = Date.now();
+    const ventas = await getHoldedLastSales(desde);
+
+    const entradas: { key: string; ts: number }[] = [];
+    ventas.byProductId.forEach((ts, id) => entradas.push({ key: `pid:${id}`, ts }));
+    ventas.bySku.forEach((ts, sku) => entradas.push({ key: `sku:${sku}`, ts }));
+    ventas.byName.forEach((ts, name) => entradas.push({ key: `name:${name}`, ts }));
+
+    // Guardar solo si la venta es más reciente que la ya indexada
+    const existentes = entradas.length
+        ? await prisma.holdedSalesIndex.findMany({ where: { userId, key: { in: entradas.map(e => e.key) } }, select: { key: true, lastSaleAt: true } })
+        : [];
+    const actual = new Map(existentes.map(e => [e.key, e.lastSaleAt.getTime()]));
+    const nuevas = entradas.filter(e => e.ts > (actual.get(e.key) || 0));
+    for (let i = 0; i < nuevas.length; i += LOTE_UPSERT) {
+        await prisma.$transaction(nuevas.slice(i, i + LOTE_UPSERT).map(e => prisma.holdedSalesIndex.upsert({
+            where: { userId_key: { userId, key: e.key } },
+            create: { userId, key: e.key, lastSaleAt: new Date(e.ts) },
+            update: { lastSaleAt: new Date(e.ts) },
+        })));
+    }
+
+    // Avanzar el cursor solo si Holded respondió todos los tipos de documento
+    if (ventas.errores === 0) {
+        await prisma.holdedSyncState.upsert({
+            where: { userId },
+            create: { userId, salesSyncedAt: new Date(inicio) },
+            update: { salesSyncedAt: new Date(inicio) },
+        });
+    }
+
+    const indice = await prisma.holdedSalesIndex.findMany({ where: { userId }, select: { key: true, lastSaleAt: true } });
+    const byProductId = new Map<string, number>(), bySku = new Map<string, number>(), byName = new Map<string, number>();
+    for (const e of indice) {
+        const ts = e.lastSaleAt.getTime();
+        if (e.key.startsWith('pid:')) byProductId.set(e.key.slice(4), ts);
+        else if (e.key.startsWith('sku:')) bySku.set(e.key.slice(4), ts);
+        else if (e.key.startsWith('name:')) byName.set(e.key.slice(5), ts);
+    }
+    return { byProductId, bySku, byName, documentosNuevos: ventas.documentos, incremental: Boolean(estado?.salesSyncedAt), errores: ventas.errores };
+}
+
 /**
  * Inventario activo según Holded (stock > 0) con el costo ponderado por lotes
  * calculado a partir de los ingresos guardados en INGRESADOS.
  */
-export async function GET() {
+export async function GET(req: Request) {
     try {
         const authSession = await getSession();
         if (!authSession) return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
         if (!isHoldedConfigured()) {
             return NextResponse.json({ success: false, error: 'HOLDED_API_KEY no está configurada en el servidor' }, { status: 500 });
         }
+        const force = new URL(req.url).searchParams.get('force') === '1';
 
-        // 1. Stock y precio desde Holded (solo lo que tiene unidades) + últimas ventas (últimos 2 años)
-        const DOS_ANIOS_MS = 730 * 24 * 60 * 60 * 1000;
+        // 1. Stock y precio desde Holded (con caché corto) + últimas ventas (índice local, sync incremental)
         const [inventarioCompleto, ventas] = await Promise.all([
-            listHoldedInventory(),
-            getHoldedLastSales(Date.now() - DOS_ANIOS_MS),
+            listHoldedInventory(force),
+            sincronizarVentas(authSession.userId),
         ]);
         const inventario = inventarioCompleto.filter(p => p.stock > 0);
 
@@ -92,7 +147,13 @@ export async function GET() {
             };
         }).sort((a, b) => (b.stock * (b.costoUsd || 0)) - (a.stock * (a.costoUsd || 0)) || b.stock - a.stock);
 
-        return NextResponse.json({ success: true, count: rows.length, fetchedAt: new Date().toISOString(), ventasConsultadas: ventas.documentos, data: rows });
+        return NextResponse.json({
+            success: true,
+            count: rows.length,
+            fetchedAt: new Date().toISOString(),
+            ventas: { documentosNuevos: ventas.documentosNuevos, incremental: ventas.incremental, errores: ventas.errores },
+            data: rows,
+        });
     } catch (error: any) {
         console.error('Error consultando inventario de Holded:', error);
         return NextResponse.json({ success: false, error: error?.message || 'Error inesperado' }, { status: 500 });

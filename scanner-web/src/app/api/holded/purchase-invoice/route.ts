@@ -111,8 +111,10 @@ export async function POST(req: Request) {
         // 1. Resolver proveedor (buscar o crear)
         const supplier = await findOrCreateSupplier(providerName);
 
-        // 2. Vincular productos de Holded por código de barras; crear los que falten
-        const barcodeMap = await getHoldedProductsByBarcode();
+        // 2. Vincular productos de Holded por código de barras; crear los que falten.
+        //    El listado completo de Holded solo se pide si alguna línea no tiene holdedId guardado.
+        let barcodeMap: Map<string, string> | null = null;
+        const getBarcodeMap = async () => barcodeMap ?? (barcodeMap = await getHoldedProductsByBarcode());
         let createdProducts = 0;
         const items: HoldedInvoiceItem[] = [];
 
@@ -125,7 +127,7 @@ export async function POST(req: Request) {
             // Preferir el id de Holded que la app guardó para ESTE producto (canónico);
             // así, aunque en Holded haya duplicados con el mismo código de barras, la
             // línea se vincula al producto correcto en vez de al primero que aparezca.
-            let productId = cat?.holdedId || barcodeMap.get(line.upc);
+            let productId = cat?.holdedId || (await getBarcodeMap()).get(line.upc);
             if (!productId) {
                 const created = await createHoldedProduct({
                     name: nombre,

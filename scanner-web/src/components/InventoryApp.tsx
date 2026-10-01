@@ -109,7 +109,8 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         // desde otros dispositivos (la lista solo se cargaba al abrir la app)
         if (v === 'HISTORY' || v === 'STATS') refreshSessions();
         if (v === 'CRUCE') setMetaTotalInput(metaTotal !== null ? String(metaTotal) : '');
-        if (v === 'INVENTARIO') cargarInventario();
+        // Inventario: solo consultar Holded si no hay datos o si tienen más de 5 minutos (ahorra llamadas a la API)
+        if (v === 'INVENTARIO' && (invRows === null || !invFetchedAt || Date.now() - new Date(invFetchedAt).getTime() > 5 * 60 * 1000)) cargarInventario();
         if (typeof window !== 'undefined' && window.location.pathname !== VIEW_PATHS[v]) {
             window.history.pushState({ view: v }, '', VIEW_PATHS[v]);
         }
@@ -170,11 +171,12 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const [invLotesAbiertos, setInvLotesAbiertos] = useState<Record<string, boolean>>({}); // desglose de lotes por fila (oculto por defecto)
     const [invSavingId, setInvSavingId] = useState<string | null>(null);
 
-    const cargarInventario = async () => {
+    const cargarInventario = async (forzar = false) => {
+        if (invLoading) return; // evitar llamadas duplicadas a Holded
         setInvLoading(true);
         setInvError(null);
         try {
-            const res = await fetch('/api/holded/inventory');
+            const res = await fetch(forzar ? '/api/holded/inventory?force=1' : '/api/holded/inventory');
             const data = await res.json();
             if (data.success) {
                 setInvRows(data.data);
@@ -2629,7 +2631,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                 >
                                     <Tags size={14} /> {invPorCategoria ? 'Por categorías' : 'Organizar por categorías'}
                                 </button>
-                                <button onClick={cargarInventario} disabled={invLoading} className="flex items-center gap-2 px-5 py-3 glass hover:bg-white rounded-xl text-xs font-black uppercase tracking-widest text-ink-soft transition-colors disabled:opacity-60">
+                                <button onClick={() => cargarInventario(true)} disabled={invLoading} className="flex items-center gap-2 px-5 py-3 glass hover:bg-white rounded-xl text-xs font-black uppercase tracking-widest text-ink-soft transition-colors disabled:opacity-60">
                                     <RefreshCw size={14} className={invLoading ? 'animate-spin' : ''} /> {invLoading ? 'Consultando Holded...' : 'Actualizar'}
                                 </button>
                             </div>
@@ -2640,7 +2642,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                 <AlertTriangle size={36} className="text-red-600" />
                                 <p className="font-bold text-ink">No se pudo consultar el inventario de Holded</p>
                                 <p className="text-xs text-muted max-w-md">{invError}</p>
-                                <button onClick={cargarInventario} className="mt-2 px-5 py-2.5 bg-brand-blue hover:bg-brand-blue-hover text-white font-black text-xs uppercase tracking-widest rounded-xl">Reintentar</button>
+                                <button onClick={() => cargarInventario(true)} className="mt-2 px-5 py-2.5 bg-brand-blue hover:bg-brand-blue-hover text-white font-black text-xs uppercase tracking-widest rounded-xl">Reintentar</button>
                             </div>
                         ) : invRows === null ? (
                             <div className="glass rounded-3xl p-14 flex flex-col items-center justify-center text-center opacity-70">
