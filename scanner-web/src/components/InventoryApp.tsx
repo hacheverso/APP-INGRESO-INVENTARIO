@@ -172,6 +172,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const [invPorCategoria, setInvPorCategoria] = useState(false); // false = más unidades arriba (defecto)
     const [invLotesAbiertos, setInvLotesAbiertos] = useState<Record<string, boolean>>({}); // desglose de lotes por fila (oculto por defecto)
     const [invSavingId, setInvSavingId] = useState<string | null>(null);
+    const [invEditHoldedId, setInvEditHoldedId] = useState<string | null>(null); // producto de Holded que se está editando desde Inventario
 
     const cargarInventario = async (forzar = false, reconstruirVentas = false) => {
         if (invLoading) return; // evitar llamadas duplicadas a Holded
@@ -207,6 +208,19 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         if (!sesion) { showToast(`El ingreso ${lote.lote} ya no existe en el historial.`, 'error'); return; }
         setInvFetchedAt(null); // al volver a Inventario se recalcula con el ingreso corregido
         await loadSessionForEditing(sesion);
+    };
+
+    // Editar nombre / categoría / imagen de un producto desde Inventario (mismo modal de Productos; actualiza Holded y la BD;
+    // el Excel se refresca solo con el Apps Script)
+    const editarProductoDesdeInventario = (row: InvRow) => {
+        const prod = row.upc ? productDB[row.upc] : undefined;
+        const upc = prod?.UPC || row.upc;
+        if (!upc) { showToast('Este producto de Holded no tiene código de barras; agrégale uno en Holded para poder editarlo aquí.', 'error'); return; }
+        const sku = prod?.SKU || row.sku || '';
+        setNewProductCondicion(sku.endsWith('-U') ? 'U' : sku.endsWith('-O') ? 'O' : 'N');
+        setNewProductForm({ UPC: upc, NOMBRE: prod?.NOMBRE || row.nombre, SKU: sku, IMAGEN: prod?.IMAGEN || row.imagen || '', CATEGORIA: prod?.CATEGORIA || row.categoria || '' });
+        setInvEditHoldedId(row.holdedId);
+        setShowNewProductModal(true);
     };
 
     const guardarPrecio = async (row: InvRow, valor: string) => {
@@ -883,7 +897,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
             const res = await fetch('/api/products', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...newProd, syncHolded: true, crearNuevo: isNewProduct })
+                body: JSON.stringify({ ...newProd, syncHolded: true, crearNuevo: isNewProduct && !invEditHoldedId, holdedId: invEditHoldedId || undefined })
             });
             const data = await res.json();
 
@@ -904,8 +918,13 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
             if (data.success) {
                 // Optimistic UI Update
                 setProductDB(prev => ({ ...prev, [UPC]: { ...prev[UPC], ...newProd } }));
-                setMatchedProduct(newProd);
-                speakProduct(newProd.NOMBRE);
+                // Si se editó desde Inventario, reflejarlo en la tabla sin volver a consultar Holded
+                setInvRows(prev => prev ? prev.map(r => (invEditHoldedId ? r.holdedId === invEditHoldedId : r.upc === UPC) ? { ...r, upc: UPC, nombre: newProd.NOMBRE, sku: newProd.SKU, imagen: newProd.IMAGEN, categoria: newProd.CATEGORIA } : r) : prev);
+                setInvEditHoldedId(null);
+                if (view === 'SCANNER') {
+                    setMatchedProduct(newProd);
+                    speakProduct(newProd.NOMBRE);
+                }
                 setShowNewProductModal(false);
 
                 if (data.holded?.ok) {
@@ -919,11 +938,12 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                     showToast(isNewProduct ? "Producto creado en la nube al instante." : "Producto actualizado en la nube.", 'success');
                 }
 
-                // Auto-expand the newly created group
-                setExpandedGroups((prev) => ({ ...prev, [newProd.UPC]: true }));
-
-                if (mode === 'UPC_SERIAL') serialRef.current?.focus();
-                else qtyRef.current?.focus();
+                if (view === 'SCANNER') {
+                    // Auto-expand the newly created group
+                    setExpandedGroups((prev) => ({ ...prev, [newProd.UPC]: true }));
+                    if (mode === 'UPC_SERIAL') serialRef.current?.focus();
+                    else qtyRef.current?.focus();
+                }
             } else {
                 showToast("Error al guardar en la nube: " + data.error, 'error');
             }
@@ -2771,8 +2791,11 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                                     </div>
                                                                     <div className="min-w-0">
                                                                         <span className="font-bold text-ink block truncate max-w-[300px]" title={r.nombre}>{r.nombre}</span>
-                                                                        <span className="text-[10px] font-mono text-muted">{r.sku || r.upc}{r.categoria ? ` · ${r.categoria}` : ''}</span>
+                                                                        <span className="text-[10px] font-mono text-muted">{r.sku || r.upc}{r.categoria ? ` · ${r.categoria}` : <span className="text-amber-700"> · sin categoría</span>}</span>
                                                                     </div>
+                                                                    <button onClick={() => editarProductoDesdeInventario(r)} className="p-1.5 rounded-lg text-muted hover:text-brand-blue hover:bg-brand-blue/10 transition-colors shrink-0" title="Editar nombre, categoría o imagen (se actualiza en Holded y en la BD; el Excel se sincroniza solo)">
+                                                                        <Pencil size={13} />
+                                                                    </button>
                                                                 </div>
                                                             </td>
                                                             <td className="px-4 py-3 text-right font-tech text-xl text-ink">{r.stock}</td>
@@ -2845,9 +2868,9 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                                             </span>
                                                                         )}
                                                                         {/* Línea 2: llegada y cuántas unidades se vendieron desde entonces */}
-                                                                        <span className="text-[9px] font-bold uppercase tracking-wider text-muted leading-tight">
+                                                                        <span className="text-[9px] font-bold uppercase tracking-wider text-muted leading-tight" title="Llegada = fecha del lote más antiguo que todavía tiene unidades en el stock actual">
                                                                             {!isNaN(llegadaTs)
-                                                                                ? <>Llegó {hace(llegadaTs)} ({fmtFecha(r.ultimaLlegada!)}) · vendidos desde entonces: <span className="text-ink">{r.vendidosDesdeLlegada ?? 0} und</span>{desdeLlegada && r.ultimaVenta ? ` · última venta ${fmtFecha(r.ultimaVenta)}` : ''}</>
+                                                                                ? <>Llegó {hace(llegadaTs)} ({fmtFecha(r.ultimaLlegada!)}) · vendidos desde entonces: <span className="text-ink">{r.vendidosDesdeLlegada ?? 0} und</span></>
                                                                                 : <>Sin ingreso en la app · vendidos 90 d: <span className="text-ink">{r.vendidos90d ?? 0} und</span></>}
                                                                         </span>
                                                                     </span>
@@ -2860,13 +2883,13 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                                     <div className="flex flex-wrap items-center gap-2">
                                                                         <span className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-blue mr-1">Stock actual repartido en:</span>
                                                                         {r.lotes.map(l => (
-                                                                            <button key={l.lote + l.fecha} onClick={() => reabrirLoteDesdeInventario(l)} className={`inline-flex items-center gap-2 text-[11px] font-bold font-mono bg-white/80 border px-3 py-1 rounded-lg whitespace-nowrap transition-colors hover:bg-brand-blue hover:text-white hover:border-brand-blue ${l.costoUsd <= 0 || l.trm <= 1 ? 'border-amber-500/50 text-amber-800' : 'border-line text-ink'}`} title={`Lote ${l.lote}${l.costoUsd <= 0 ? ' · este lote se ingresó SIN costo (baja el promedio)' : ''}${l.trm <= 1 ? ' · este lote entró en USD sin TRM (por eso no hay costo en COP)' : ''} · clic para reabrir este ingreso y corregirlo`}>
+                                                                            <button key={l.lote + l.fecha} onClick={() => reabrirLoteDesdeInventario(l)} className={`inline-flex items-center gap-2 text-[11px] font-bold font-mono bg-white/80 border px-3 py-1 rounded-lg whitespace-nowrap transition-colors hover:bg-brand-blue hover:text-white hover:border-brand-blue ${l.costoUsd <= 0 || l.trm <= 1 ? 'border-amber-500/50 text-amber-800' : 'border-line text-ink'}`}
+                                                                                title={`Lote ${l.lote} · ${l.tomadas} und · USD $${l.costoUsd}${l.trm > 1 ? ` · TRM ${l.trm}` : ' · SIN TRM (por eso no hay costo en COP)'}${l.costoUsd <= 0 ? ' · SIN COSTO (baja el promedio)' : ''}${(l.seriales || []).length ? ` · S/N ${(l.seriales || []).join(', ')}` : ''}\nClic para reabrir este ingreso y corregirlo`}>
                                                                                 <Pencil size={10} className="opacity-60" />
-                                                                                <span className="text-brand-blue group-hover:text-white">{l.tomadas} und</span>
-                                                                                <span>USD ${l.costoUsd.toLocaleString('es-CO')}{l.costoUsd <= 0 ? ' ⚠ sin costo' : ''}</span>
-                                                                                {l.trm > 1 ? <span className="text-muted">TRM {l.trm.toLocaleString('es-CO')}</span> : <span className="text-amber-700">sin TRM</span>}
-                                                                                <span className="text-faint">{l.lote} · {fmtFecha(l.fecha)}</span>
-                                                                                {(l.seriales || []).length > 0 && <span className="text-[10px] text-ink-soft">S/N {(l.seriales || []).join(', ')}</span>}
+                                                                                <span>{fmtFecha(l.fecha)}</span>
+                                                                                <span className="text-brand-blue">{l.tomadas} und</span>
+                                                                                <span className="text-faint">USD ${l.costoUsd.toLocaleString('es-CO')}</span>
+                                                                                {(l.costoUsd <= 0 || l.trm <= 1) && <span className="text-amber-700">⚠ {l.costoUsd <= 0 ? 'sin costo' : 'sin TRM'}</span>}
                                                                             </button>
                                                                         ))}
                                                                         {r.cubiertas < r.stock && <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">{r.stock - r.cubiertas} und sin ingreso en la app</span>}

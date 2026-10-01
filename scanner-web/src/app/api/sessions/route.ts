@@ -97,6 +97,13 @@ export async function POST(req: Request) {
         }
 
         const newSession = await prisma.$transaction(async (tx) => {
+            // Si es una re-edición, conservar la fecha original de llegada (createdAt y date):
+            // corregir costos o seriales no convierte el ingreso en uno nuevo.
+            const previa = await tx.historySession.findFirst({
+                where: { id: id, userId: authSession.userId },
+                select: { createdAt: true, date: true }
+            });
+
             // Delete existing session if re-saving (Cascade deletes records)
             await tx.historySession.deleteMany({
                 where: { id: id, userId: authSession.userId }
@@ -106,12 +113,13 @@ export async function POST(req: Request) {
             const session = await tx.historySession.create({
                 data: {
                     id: id,
-                    date: date,
+                    date: previa?.date || date,
                     batchName: batchName || null,
                     provider: proveedor || null,
                     totalItems: totalItems,
                     totalCop: totalCop,
-                    userId: authSession.userId
+                    userId: authSession.userId,
+                    ...(previa ? { createdAt: previa.createdAt } : {})
                 }
             });
 

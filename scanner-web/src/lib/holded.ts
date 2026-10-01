@@ -255,6 +255,36 @@ export interface HoldedSaleDocLite {
     lines: HoldedSaleLine[];
 }
 export interface HoldedSaleLine { pid?: string; sku?: string; name?: string; units: number }
+
+/** Normaliza nombres/SKU para cruzar líneas de venta con productos: mayúsculas, sin acentos, un solo espacio. */
+export function normalizarClave(v: unknown): string {
+    return String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+}
+/** Fecha de un documento de Holded: puede venir como unix (segundos o ms) o como texto. Devuelve ms o NaN. */
+export function fechaDocumentoMs(raw: unknown): number {
+    const n = Number(raw);
+    if (isFinite(n) && n > 0) return n < 1e12 ? n * 1000 : n;
+    const t = Date.parse(String(raw ?? ''));
+    return isFinite(t) ? t : NaN;
+}
+/** Líneas de un documento: Holded las entrega en `products` (a veces `items`). */
+export function lineasDeDocumento(d: any): any[] {
+    if (Array.isArray(d?.products)) return d.products;
+    if (Array.isArray(d?.items)) return d.items;
+    if (Array.isArray(d?.lines)) return d.lines;
+    return [];
+}
+function lineaAVenta(line: any): HoldedSaleLine | null {
+    if (!line || typeof line !== 'object') return null;
+    const l: HoldedSaleLine = { units: Math.max(0, Number(line.units ?? line.quantity ?? line.qty) || 0) };
+    const pid = line.productId ?? line.product_id ?? line.productID ?? line.product?.id;
+    if (pid) l.pid = String(pid).trim();
+    const sku = line.sku ?? line.SKU ?? line.product?.sku;
+    if (sku) l.sku = normalizarClave(sku);
+    const name = line.name ?? line.productName ?? line.product?.name ?? line.desc;
+    if (name) l.name = normalizarClave(name);
+    return (l.pid || l.sku || l.name) ? l : null;
+}
 export async function listHoldedSalesDocs(sinceTs: number): Promise<{ docs: HoldedSaleDocLite[]; errores: number }> {
     const apiKey = process.env.HOLDED_API_KEY;
     const out = { docs: [] as HoldedSaleDocLite[], errores: 0 };
@@ -271,21 +301,55 @@ export async function listHoldedSalesDocs(sinceTs: number): Promise<{ docs: Hold
             continue;
         }
         for (const d of lista) {
-            const rawDate = Number(d.date);
-            if (!isFinite(rawDate) || rawDate <= 0) continue;
-            const ts = rawDate < 1e12 ? rawDate * 1000 : rawDate; // Holded entrega segundos
-            if (ts < sinceTs) continue;
-            const lines: any[] = Array.isArray(d.products) ? d.products : (Array.isArray(d.items) ? d.items : []);
+            const ts = fechaDocumentoMs(d.date);
+            if (isNaN(ts) || ts < sinceTs) continue;
             const keys = new Set<string>();
             const lineas: HoldedSaleLine[] = [];
-            for (const line of lines) {
-                const l: HoldedSaleLine = { units: Math.max(0, Number(line?.units) || 0) };
-                if (line?.productId) { l.pid = String(line.productId).trim(); keys.add(`pid:${l.pid}`); }
-                if (line?.sku) { l.sku = String(line.sku).trim().toUpperCase(); keys.add(`sku:${l.sku}`); }
-                if (line?.name) { l.name = String(line.name).trim().toUpperCase(); keys.add(`name:${l.name}`); }
-                if (l.pid || l.sku || l.name) lineas.push(l);
+            for (const line of lineasDeDocumento(d)) {
+                const l = lineaAVenta(line);
+                if (!l) continue;
+                if (l.pid) keys.add(`pid:${l.pid}`);
+                if (l.sku) keys.add(`sku:${l.sku}`);
+                if (l.name) keys.add(`name:${l.name}`);
+                lineas.push(l);
             }
             out.docs.push({ docId: String(d.id), tipo, date: ts, keys: Array.from(keys), lines: lineas });
+        }
+    }
+    return out;
+}
+
+/**
+ * Diagnóstico: trae la primera página cruda de documentos de venta recientes y el detalle
+ * del primero, para ver con qué campos llegan las líneas (productId, sku, name, units).
+ */
+export async function muestraVentasCrudas(dias: number): Promise<any> {
+    const apiKey = process.env.HOLDED_API_KEY;
+    if (!apiKey) return { error: 'HOLDED_API_KEY no está configurada en el servidor' };
+    const startSec = Math.floor((Date.now() - dias * 24 * 60 * 60 * 1000) / 1000);
+    const out: any = { desde: new Date(startSec * 1000).toISOString(), tipos: {} };
+    for (const tipo of ['invoice', 'salesreceipt']) {
+        try {
+            const res = await fetch(`${HOLDED_API_BASE}/documents/${tipo}?starttmp=${startSec}&page=1`, { headers: { key: apiKey }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+            const data: any = await res.json().catch(() => null);
+            const lista = Array.isArray(data) ? data : [];
+            const primero = lista[0];
+            let detalle: any = null;
+            if (primero?.id) {
+                const r2 = await fetch(`${HOLDED_API_BASE}/documents/${tipo}/${primero.id}`, { headers: { key: apiKey }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+                detalle = await r2.json().catch(() => null);
+            }
+            out.tipos[tipo] = {
+                http: res.status,
+                documentosEnPagina1: lista.length,
+                respuestaEsLista: Array.isArray(data),
+                camposDelPrimero: primero ? Object.keys(primero) : [],
+                primeroResumen: primero ? { id: primero.id, date: primero.date, docNumber: primero.docNumber, fechaInterpretada: new Date(fechaDocumentoMs(primero.date)).toISOString(), lineasEnLista: lineasDeDocumento(primero).length, primeraLineaEnLista: lineasDeDocumento(primero)[0] ?? null } : null,
+                detalleDelPrimero: detalle ? { campos: Object.keys(detalle), lineasEnDetalle: lineasDeDocumento(detalle).length, primeraLineaEnDetalle: lineasDeDocumento(detalle)[0] ?? null } : null,
+                errorCrudo: !Array.isArray(data) ? data : undefined,
+            };
+        } catch (e: any) {
+            out.tipos[tipo] = { error: e?.message || 'error de red' };
         }
     }
     return out;

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { getSession } from '@/lib/auth';
-import { isHoldedConfigured, listHoldedInventory, listHoldedSalesDocs } from '@/lib/holded';
+import { isHoldedConfigured, listHoldedInventory, listHoldedSalesDocs, normalizarClave } from '@/lib/holded';
 import { calcularCostoPonderado, Lote } from '@/lib/costing';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +13,7 @@ const SOLAPE_MS = 2 * DIA_MS;           // incremental: desde la última sync me
 const RECONCILIAR_CADA_MS = DIA_MS;      // una vez al día se revisa la ventana reciente completa
 const VENTANA_RECONCILIACION_MS = 90 * DIA_MS; // ...para detectar facturas borradas o editadas
 const LOTE_UPSERT = 200;
+const INDEX_VERSION = 2; // 2 = claves normalizadas (sin acentos, espacios simples) + unidades por línea
 
 /**
  * Sincroniza las ventas de Holded en la tabla local HoldedSaleDoc y devuelve mapas
@@ -26,11 +27,8 @@ const LOTE_UPSERT = 200;
 async function sincronizarVentas(userId: string, reconstruir: boolean) {
     const estado = await prisma.holdedSyncState.findUnique({ where: { userId } });
     const ahora = Date.now();
-    // Documentos guardados por una versión anterior (sin unidades por línea) → reconstruir una vez
-    if (!reconstruir && estado?.salesSyncedAt) {
-        const sinLineas = await prisma.holdedSaleDoc.count({ where: { userId, lines: { equals: Prisma.DbNull } } });
-        if (sinLineas > 0) reconstruir = true;
-    }
+    // Índice guardado por una versión anterior del formato → reconstruir una vez
+    if (!reconstruir && estado?.salesSyncedAt && (estado.indexVersion ?? 0) < INDEX_VERSION) reconstruir = true;
     let desde: number;
     let reconciliar: boolean;
     if (reconstruir || !estado?.salesSyncedAt) {
@@ -62,8 +60,8 @@ async function sincronizarVentas(userId: string, reconstruir: boolean) {
         }
         await prisma.holdedSyncState.upsert({
             where: { userId },
-            create: { userId, salesSyncedAt: new Date(ahora), salesReconciledAt: reconciliar ? new Date(ahora) : null },
-            update: { salesSyncedAt: new Date(ahora), ...(reconciliar ? { salesReconciledAt: new Date(ahora) } : {}) },
+            create: { userId, salesSyncedAt: new Date(ahora), salesReconciledAt: reconciliar ? new Date(ahora) : null, indexVersion: INDEX_VERSION },
+            update: { salesSyncedAt: new Date(ahora), ...(reconciliar ? { salesReconciledAt: new Date(ahora) } : {}), ...(reconstruir ? { indexVersion: INDEX_VERSION } : {}) },
         });
     }
 
@@ -175,15 +173,24 @@ export async function GET(req: Request) {
             const lotes = upc ? (lotesPorUpc.get(upc) || []) : [];
             const costo = calcularCostoPonderado(lotes, item.stock);
             // Ventas: por id de producto, si no por SKU, si no por nombre (Holded no siempre vincula la línea)
-            const claves = [`pid:${item.id}`, item.sku ? `sku:${item.sku.toUpperCase()}` : '', local?.sku ? `sku:${local.sku.toUpperCase()}` : '', item.name ? `name:${item.name.toUpperCase()}` : ''].filter(Boolean);
+            const claves = [
+                `pid:${item.id}`,
+                item.sku ? `sku:${normalizarClave(item.sku)}` : '',
+                local?.sku ? `sku:${normalizarClave(local.sku)}` : '',
+                item.name ? `name:${normalizarClave(item.name)}` : '',
+                local?.name ? `name:${normalizarClave(local.name)}` : '',
+            ].filter(Boolean);
             const ventasProd = claves.map(k => ventas.ventasPorClave.get(k)).find(v => v && v.length) || [];
             const ventaTs = ventasProd.reduce((m, v) => Math.max(m, v.ts), 0) || null;
-            const llegadaTs = lotes[0] ? new Date(lotes[0].fecha).getTime() : null;
+            // "Llegada" = el lote MÁS ANTIGUO que todavía tiene unidades en el stock actual
+            // (si el stock se compone de varios lotes, el reloj corre desde el más viejo de ellos).
+            const loteMasAntiguoEnStock = costo.lotesUsados[costo.lotesUsados.length - 1] || lotes[0] || null;
+            const llegadaTs = loteMasAntiguoEnStock ? new Date(loteMasAntiguoEnStock.fecha).getTime() : null;
             const desdeLlegada = llegadaTs ? ventasProd.filter(v => v.ts >= llegadaTs) : [];
             const ultimos90 = ventasProd.filter(v => v.ts >= Date.now() - 90 * 24 * 60 * 60 * 1000);
             return {
                 ultimaVenta: ventaTs ? new Date(ventaTs).toISOString() : null,
-                ultimaLlegada: lotes[0]?.fecha || null,
+                ultimaLlegada: loteMasAntiguoEnStock?.fecha || null,
                 vendidosDesdeLlegada: desdeLlegada.reduce((a, v) => a + v.units, 0),
                 ventasDesdeLlegada: desdeLlegada.length,
                 vendidos90d: ultimos90.reduce((a, v) => a + v.units, 0),
