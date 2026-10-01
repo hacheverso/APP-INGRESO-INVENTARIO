@@ -97,6 +97,7 @@ model HoldedSyncState {
   userId            String    @id
   salesSyncedAt     DateTime?  // última sincronización incremental
   salesReconciledAt DateTime?  // última reconciliación de la ventana reciente (detecta borrados/ediciones)
+  indexVersion      Int       @default(0) // versión del formato del índice; si cambia, se reconstruye una vez
   updatedAt         DateTime  @updatedAt
 }
 

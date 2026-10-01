@@ -177,8 +177,11 @@ export async function POST(req: Request) {
         let holded = null;
         if (syncHolded) {
             if (isHoldedConfigured()) {
-                holded = existing
-                    ? await updateHoldedProduct({ holdedId: existing.holdedId, barcode: UPC, name: NOMBRE, sku: SKU || null, imageUrl: IMAGEN || null })
+                // Si el producto ya existe en Holded pero no en la app (p. ej. editado desde Inventario),
+                // el frontend manda su holdedId para ACTUALIZARLO en vez de crear un duplicado.
+                const holdedIdConocido: string | null = existing?.holdedId || (typeof body.holdedId === 'string' && body.holdedId ? body.holdedId : null);
+                holded = holdedIdConocido
+                    ? await updateHoldedProduct({ holdedId: holdedIdConocido, barcode: UPC, name: NOMBRE, sku: SKU || null, imageUrl: IMAGEN || null })
                     : await createHoldedProduct({ name: NOMBRE, barcode: UPC, sku: SKU || null, imageUrl: IMAGEN || null });
 
                 // Guardar el id de Holded si es nuevo (para futuras ediciones sin buscar por barcode)
