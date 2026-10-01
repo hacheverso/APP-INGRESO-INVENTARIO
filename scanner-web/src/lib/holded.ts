@@ -1,7 +1,7 @@
 // Integración con Holded (https://developers.holded.com)
 // Autenticación: header "key" con la API Key generada en Holded → Configuración → Developers.
 
-const HOLDED_API_BASE = 'https://api.holded.com/api/invoicing/v1';
+const HOLDED_API_BASE = process.env.HOLDED_API_BASE_URL || 'https://api.holded.com/api/invoicing/v1';
 const REQUEST_TIMEOUT_MS = 15000;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // Holded rechaza imágenes muy pesadas
 
@@ -29,6 +29,7 @@ export async function createHoldedProduct(params: {
     imageUrl?: string | null;
 }): Promise<HoldedSyncResult> {
     const apiKey = process.env.HOLDED_API_KEY;
+    productsCache = null; // la mutación cambia el catálogo de Holded
     if (!apiKey) {
         return { ok: false, error: 'HOLDED_API_KEY no está configurada en el servidor' };
     }
@@ -85,6 +86,7 @@ export async function updateHoldedProduct(params: {
     imageUrl?: string | null;
 }): Promise<HoldedSyncResult> {
     const apiKey = process.env.HOLDED_API_KEY;
+    productsCache = null; // la mutación cambia el catálogo de Holded
     if (!apiKey) {
         return { ok: false, error: 'HOLDED_API_KEY no está configurada en el servidor' };
     }
@@ -145,6 +147,17 @@ interface HoldedListItem {
     [key: string]: any;
 }
 
+// Caché en memoria del listado de productos (evita re-listar todo Holded en ráfagas de llamadas)
+const PRODUCTS_CACHE_MS = 60 * 1000;
+let productsCache: { at: number; items: HoldedListItem[] } | null = null;
+export function invalidateHoldedProductsCache() { productsCache = null; }
+async function listHoldedProductsRaw(apiKey: string, force = false): Promise<HoldedListItem[]> {
+    if (!force && productsCache && Date.now() - productsCache.at < PRODUCTS_CACHE_MS) return productsCache.items;
+    const items = await holdedGetList(apiKey, '/products');
+    productsCache = { at: Date.now(), items };
+    return items;
+}
+
 async function holdedGetList(apiKey: string, path: string, maxPages: number = MAX_LIST_PAGES): Promise<HoldedListItem[]> {
     const all: HoldedListItem[] = [];
     const seenIds = new Set<string>();
@@ -198,7 +211,7 @@ export async function findHoldedProductsByBarcode(barcode: string): Promise<Arra
     const apiKey = process.env.HOLDED_API_KEY;
     if (!apiKey) throw new Error('HOLDED_API_KEY no está configurada en el servidor');
 
-    const products = await holdedGetList(apiKey, '/products');
+    const products = await listHoldedProductsRaw(apiKey);
     const target = String(barcode).trim();
     return products
         .filter(p => String(p.barcode || '').trim() === target)
@@ -214,11 +227,11 @@ export interface HoldedInventoryItem {
     stock: number;
     price: number;
 }
-export async function listHoldedInventory(): Promise<HoldedInventoryItem[]> {
+export async function listHoldedInventory(force = false): Promise<HoldedInventoryItem[]> {
     const apiKey = process.env.HOLDED_API_KEY;
     if (!apiKey) throw new Error('HOLDED_API_KEY no está configurada en el servidor');
 
-    const products = await holdedGetList(apiKey, '/products');
+    const products = await listHoldedProductsRaw(apiKey, force);
     return products.map(p => ({
         id: p.id,
         name: p.name || '',
@@ -240,10 +253,11 @@ export interface HoldedLastSales {
     bySku: Map<string, number>;
     byName: Map<string, number>;
     documentos: number;
+    errores: number; // tipos de documento que no se pudieron listar
 }
 export async function getHoldedLastSales(sinceTs: number): Promise<HoldedLastSales> {
     const apiKey = process.env.HOLDED_API_KEY;
-    const out: HoldedLastSales = { byProductId: new Map(), bySku: new Map(), byName: new Map(), documentos: 0 };
+    const out: HoldedLastSales = { byProductId: new Map(), bySku: new Map(), byName: new Map(), documentos: 0, errores: 0 };
     if (!apiKey) return out;
 
     const startSec = Math.floor(sinceTs / 1000);
@@ -260,6 +274,7 @@ export async function getHoldedLastSales(sinceTs: number): Promise<HoldedLastSal
             docs = await holdedGetList(apiKey, `/documents/${tipo}?starttmp=${startSec}`, 60);
         } catch (e) {
             console.warn(`No se pudieron listar documentos ${tipo} de Holded:`, (e as any)?.message);
+            out.errores++;
             continue;
         }
         for (const d of docs) {
@@ -282,6 +297,7 @@ export async function getHoldedLastSales(sinceTs: number): Promise<HoldedLastSal
 /** Actualiza únicamente el precio de venta de un producto en Holded. */
 export async function updateHoldedPrice(holdedId: string, price: number): Promise<HoldedSyncResult> {
     const apiKey = process.env.HOLDED_API_KEY;
+    productsCache = null; // la mutación cambia el catálogo de Holded
     if (!apiKey) return { ok: false, error: 'HOLDED_API_KEY no está configurada en el servidor' };
     try {
         const res = await fetch(`${HOLDED_API_BASE}/products/${holdedId}`, {
@@ -308,6 +324,7 @@ export async function updateHoldedPrice(holdedId: string, price: number): Promis
  */
 export async function deleteHoldedProduct(params: { holdedId?: string | null; barcode: string }): Promise<{ ok: boolean; deleted: number; error?: string }> {
     const apiKey = process.env.HOLDED_API_KEY;
+    productsCache = null; // la mutación cambia el catálogo de Holded
     if (!apiKey) return { ok: false, deleted: 0, error: 'HOLDED_API_KEY no está configurada en el servidor' };
     try {
         let ids: string[] = [];
@@ -344,7 +361,7 @@ export async function getHoldedProductsByBarcode(): Promise<Map<string, string>>
     const apiKey = process.env.HOLDED_API_KEY;
     if (!apiKey) throw new Error('HOLDED_API_KEY no está configurada en el servidor');
 
-    const products = await holdedGetList(apiKey, '/products');
+    const products = await listHoldedProductsRaw(apiKey);
     const map = new Map<string, string>();
     for (const p of products) {
         const barcode = String(p.barcode || '').trim();

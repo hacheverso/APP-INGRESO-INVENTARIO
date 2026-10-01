@@ -75,3 +75,21 @@ model HistoryRecord {
   
   createdAt DateTime @default(now())
 }
+
+// Índice local de últimas ventas por producto (Holded). Se sincroniza de forma
+// incremental: solo se piden a Holded los documentos nuevos desde la última sincronización.
+model HoldedSalesIndex {
+  id         String   @id @default(cuid())
+  userId     String
+  key        String   // "pid:<holdedId>" | "sku:<SKU>" | "name:<NOMBRE>"
+  lastSaleAt DateTime
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, key])
+}
+
+model HoldedSyncState {
+  userId        String    @id
+  salesSyncedAt DateTime?
+  updatedAt     DateTime  @updatedAt
+}
