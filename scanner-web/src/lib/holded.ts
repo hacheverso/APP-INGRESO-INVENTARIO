@@ -172,6 +172,9 @@ async function holdedGetList(apiKey: string, path: string, maxPages: number = MA
             throw new Error(`Holded respondió HTTP ${res.status} al listar ${path}`);
         }
         const data: any = await res.json().catch(() => null);
+        if (data && !Array.isArray(data)) {
+            throw new Error(`Holded no devolvió una lista en ${path}: ${JSON.stringify(data).slice(0, 200)}`);
+        }
         if (!Array.isArray(data) || data.length === 0) break;
 
         // Si la API ignora ?page= devuelve siempre lo mismo: cortamos al repetir ids
@@ -285,10 +288,10 @@ function lineaAVenta(line: any): HoldedSaleLine | null {
     if (name) l.name = normalizarClave(name);
     return (l.pid || l.sku || l.name) ? l : null;
 }
-export async function listHoldedSalesDocs(sinceTs: number): Promise<{ docs: HoldedSaleDocLite[]; errores: number }> {
+export async function listHoldedSalesDocs(sinceTs: number): Promise<{ docs: HoldedSaleDocLite[]; errores: number; detalle: string[] }> {
     const apiKey = process.env.HOLDED_API_KEY;
-    const out = { docs: [] as HoldedSaleDocLite[], errores: 0 };
-    if (!apiKey) return out;
+    const out = { docs: [] as HoldedSaleDocLite[], errores: 0, detalle: [] as string[] };
+    if (!apiKey) { out.detalle.push('HOLDED_API_KEY no configurada'); return out; }
 
     const startSec = Math.floor(sinceTs / 1000);
     for (const tipo of ['invoice', 'salesreceipt']) {
@@ -298,8 +301,10 @@ export async function listHoldedSalesDocs(sinceTs: number): Promise<{ docs: Hold
         } catch (e) {
             console.warn(`No se pudieron listar documentos ${tipo} de Holded:`, (e as any)?.message);
             out.errores++;
+            out.detalle.push(`${tipo}: ERROR · ${(e as any)?.message || 'error de red'}`);
             continue;
         }
+        let conLineas = 0;
         for (const d of lista) {
             const ts = fechaDocumentoMs(d.date);
             if (isNaN(ts) || ts < sinceTs) continue;
@@ -313,10 +318,36 @@ export async function listHoldedSalesDocs(sinceTs: number): Promise<{ docs: Hold
                 if (l.name) keys.add(`name:${l.name}`);
                 lineas.push(l);
             }
+            if (lineas.length) conLineas++;
             out.docs.push({ docId: String(d.id), tipo, date: ts, keys: Array.from(keys), lines: lineas });
         }
+        out.detalle.push(`${tipo}: ${lista.length} documentos en el listado · ${conLineas} traen líneas de producto`);
     }
     return out;
+}
+
+/** Detalle de un documento de venta (cuando el listado no trae las líneas de producto). */
+export async function getHoldedSaleDocDetail(tipo: string, docId: string): Promise<{ ok: boolean; lines: HoldedSaleLine[]; keys: string[]; error?: string }> {
+    const apiKey = process.env.HOLDED_API_KEY;
+    if (!apiKey) return { ok: false, lines: [], keys: [], error: 'HOLDED_API_KEY no configurada' };
+    try {
+        const res = await fetch(`${HOLDED_API_BASE}/documents/${tipo}/${docId}`, { headers: { key: apiKey }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+        const data: any = await res.json().catch(() => null);
+        if (!res.ok || !data || data.status === 0) return { ok: false, lines: [], keys: [], error: `HTTP ${res.status}` };
+        const keys = new Set<string>();
+        const lines: HoldedSaleLine[] = [];
+        for (const line of lineasDeDocumento(data)) {
+            const l = lineaAVenta(line);
+            if (!l) continue;
+            if (l.pid) keys.add(`pid:${l.pid}`);
+            if (l.sku) keys.add(`sku:${l.sku}`);
+            if (l.name) keys.add(`name:${l.name}`);
+            lines.push(l);
+        }
+        return { ok: true, lines, keys: Array.from(keys) };
+    } catch (error: any) {
+        return { ok: false, lines: [], keys: [], error: error?.message || 'error de red' };
+    }
 }
 
 /**

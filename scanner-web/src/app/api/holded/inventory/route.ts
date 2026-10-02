@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { getSession } from '@/lib/auth';
-import { isHoldedConfigured, listHoldedInventory, listHoldedSalesDocs, normalizarClave } from '@/lib/holded';
+import { isHoldedConfigured, listHoldedInventory, listHoldedSalesDocs, getHoldedSaleDocDetail, normalizarClave } from '@/lib/holded';
 import { calcularCostoPonderado, Lote } from '@/lib/costing';
 
 export const dynamic = 'force-dynamic';
@@ -14,6 +14,7 @@ const RECONCILIAR_CADA_MS = DIA_MS;      // una vez al día se revisa la ventana
 const VENTANA_RECONCILIACION_MS = 90 * DIA_MS; // ...para detectar facturas borradas o editadas
 const LOTE_UPSERT = 200;
 const INDEX_VERSION = 2; // 2 = claves normalizadas (sin acentos, espacios simples) + unidades por línea
+const MAX_DETALLES_POR_CARGA = 150; // si el listado no trae líneas, se pide el detalle de a 150 documentos por carga
 
 /**
  * Sincroniza las ventas de Holded en la tabla local HoldedSaleDoc y devuelve mapas
@@ -39,16 +40,57 @@ async function sincronizarVentas(userId: string, reconstruir: boolean) {
         desde = estado.salesSyncedAt.getTime() - SOLAPE_MS; reconciliar = false;
     }
 
-    const { docs, errores } = await listHoldedSalesDocs(desde);
+    const { docs, errores, detalle } = await listHoldedSalesDocs(desde);
+
+    // Si el listado no trae las líneas de producto, pedir el detalle del documento (con tope por carga).
+    // Los que no alcanzan quedan "pendientes" (lines = null) y se completan en las siguientes cargas.
+    let detallesPedidos = 0;
+    const sinLineas = docs.filter(d => d.lines.length === 0);
+    const yaCompletos = new Set(sinLineas.length ? (await prisma.holdedSaleDoc.findMany({
+        where: { userId, docId: { in: sinLineas.map(d => d.docId) }, NOT: { lines: { equals: Prisma.DbNull } } },
+        select: { docId: true }
+    })).map(x => x.docId) : []);
+    const conDetalle = new Set<string>();
+    for (const d of sinLineas.filter(d => !yaCompletos.has(d.docId)).sort((a, b) => b.date - a.date)) {
+        if (detallesPedidos >= MAX_DETALLES_POR_CARGA) break;
+        const det = await getHoldedSaleDocDetail(d.tipo, d.docId);
+        detallesPedidos++;
+        if (det.ok) { d.lines = det.lines; d.keys = det.keys; conDetalle.add(d.docId); }
+    }
 
     // Reemplazar cada documento completo (así una factura editada queda con sus líneas nuevas)
     for (let i = 0; i < docs.length; i += LOTE_UPSERT) {
-        await prisma.$transaction(docs.slice(i, i + LOTE_UPSERT).map(d => prisma.holdedSaleDoc.upsert({
-            where: { userId_docId: { userId, docId: d.docId } },
-            create: { userId, docId: d.docId, tipo: d.tipo, date: new Date(d.date), keys: d.keys, lines: d.lines as unknown as Prisma.InputJsonValue },
-            update: { tipo: d.tipo, date: new Date(d.date), keys: d.keys, lines: d.lines as unknown as Prisma.InputJsonValue },
-        })));
+        await prisma.$transaction(docs.slice(i, i + LOTE_UPSERT).map(d => {
+            const tieneLineas = d.lines.length > 0 || conDetalle.has(d.docId);
+            const lineasJson = tieneLineas ? (d.lines as unknown as Prisma.InputJsonValue) : Prisma.DbNull;
+            return prisma.holdedSaleDoc.upsert({
+                where: { userId_docId: { userId, docId: d.docId } },
+                create: { userId, docId: d.docId, tipo: d.tipo, date: new Date(d.date), keys: d.keys, lines: lineasJson },
+                // Si ya teníamos líneas (del detalle) y el listado sigue sin traerlas, no las pisamos
+                update: yaCompletos.has(d.docId) && !tieneLineas
+                    ? { tipo: d.tipo, date: new Date(d.date) }
+                    : { tipo: d.tipo, date: new Date(d.date), keys: d.keys, lines: lineasJson },
+            });
+        }));
     }
+
+    // Completar documentos pendientes de cargas anteriores (los más recientes primero)
+    if (detallesPedidos < MAX_DETALLES_POR_CARGA) {
+        const pendientes = await prisma.holdedSaleDoc.findMany({
+            where: { userId, lines: { equals: Prisma.DbNull } },
+            orderBy: { date: 'desc' },
+            take: MAX_DETALLES_POR_CARGA - detallesPedidos,
+            select: { docId: true, tipo: true }
+        });
+        for (const pnd of pendientes) {
+            const det = await getHoldedSaleDocDetail(pnd.tipo, pnd.docId);
+            detallesPedidos++;
+            if (det.ok) {
+                await prisma.holdedSaleDoc.update({ where: { userId_docId: { userId, docId: pnd.docId } }, data: { keys: det.keys, lines: det.lines as unknown as Prisma.InputJsonValue } });
+            }
+        }
+    }
+    const pendientesRestantes = await prisma.holdedSaleDoc.count({ where: { userId, lines: { equals: Prisma.DbNull } } });
 
     let borrados = 0;
     if (errores === 0) {
@@ -85,7 +127,14 @@ async function sincronizarVentas(userId: string, reconstruir: boolean) {
     }
     return {
         ventasPorClave,
-        info: { modo: reconstruir ? 'reconstruccion' : reconciliar ? 'reconciliacion' : 'incremental', documentos: docs.length, borrados, errores, totalDocs: todos.length },
+        info: {
+            modo: reconstruir ? 'reconstruccion' : reconciliar ? 'reconciliacion' : 'incremental',
+            documentos: docs.length, borrados, errores, totalDocs: todos.length,
+            detallesPedidos, pendientes: pendientesRestantes,
+            conLineas: todos.filter(d => Array.isArray(d.lines) && (d.lines as any[]).length > 0).length,
+            detalle,
+            desde: new Date(desde).toISOString(),
+        },
     };
 }
 
