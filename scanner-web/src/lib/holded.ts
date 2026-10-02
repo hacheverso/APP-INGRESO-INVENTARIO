@@ -169,7 +169,8 @@ async function holdedGetList(apiKey: string, path: string, maxPages: number = MA
             signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
         if (!res.ok) {
-            throw new Error(`Holded respondió HTTP ${res.status} al listar ${path}`);
+            const cuerpo = await res.text().catch(() => '');
+            throw new Error(`Holded respondió HTTP ${res.status} al listar ${path}${cuerpo ? `: ${cuerpo.slice(0, 160)}` : ''}`);
         }
         const data: any = await res.json().catch(() => null);
         if (data && !Array.isArray(data)) {
@@ -297,7 +298,9 @@ export async function listHoldedSalesDocs(sinceTs: number): Promise<{ docs: Hold
     for (const tipo of ['invoice', 'salesreceipt']) {
         let lista: HoldedListItem[] = [];
         try {
-            lista = await holdedGetList(apiKey, `/documents/${tipo}?starttmp=${startSec}`, 60);
+            const r = await listarDocumentosVenta(apiKey, tipo, startSec);
+            lista = r.lista;
+            out.detalle.push(`${tipo}: ${r.estrategia}`);
         } catch (e) {
             console.warn(`No se pudieron listar documentos ${tipo} de Holded:`, (e as any)?.message);
             out.errores++;
@@ -324,6 +327,62 @@ export async function listHoldedSalesDocs(sinceTs: number): Promise<{ docs: Hold
         out.detalle.push(`${tipo}: ${lista.length} documentos en el listado · ${conLineas} traen líneas de producto`);
     }
     return out;
+}
+
+/**
+ * Lista documentos de venta desde una fecha probando varias formas de pedirlo, porque Holded
+ * rechaza (HTTP 400) algunas combinaciones de filtros según la cuenta:
+ *  1) starttmp + endtmp   2) starttmp   3) sin filtro, página por página, parando al llegar a
+ * documentos más antiguos que la fecha pedida (si vienen ordenados del más nuevo al más viejo).
+ */
+const estrategiaDocumentos = new Map<string, 'sin-filtro'>(); // recuerda por tipo si Holded rechaza los filtros de fecha
+async function listarDocumentosVenta(apiKey: string, tipo: string, startSec: number): Promise<{ lista: HoldedListItem[]; estrategia: string }> {
+    const endSec = Math.floor(Date.now() / 1000) + 2 * 86400;
+    const errores: string[] = [];
+    if (estrategiaDocumentos.get(tipo) !== 'sin-filtro') {
+        for (const [nombre, path] of [
+            ['filtro desde+hasta', `/documents/${tipo}?starttmp=${startSec}&endtmp=${endSec}`],
+            ['filtro desde', `/documents/${tipo}?starttmp=${startSec}`],
+        ] as const) {
+            try {
+                const lista = await holdedGetList(apiKey, path, 80);
+                return { lista, estrategia: `${nombre} · ${lista.length} documentos` };
+            } catch (e: any) {
+                const msg = String(e?.message || '');
+                if (!/HTTP 4\d\d/.test(msg)) throw e; // errores de red / 5xx: no insistir con otras variantes
+                errores.push(msg);
+            }
+        }
+        estrategiaDocumentos.set(tipo, 'sin-filtro');
+    }
+
+    // 3) Sin filtro: paginar y cortar cuando la página ya es más vieja que la fecha pedida
+    const todos: HoldedListItem[] = [];
+    const vistos = new Set<string>();
+    let paginas = 0;
+    let orden: 'desc' | 'asc' | 'desconocido' = 'desconocido';
+    for (let page = 1; page <= 300; page++) {
+        const res = await fetch(`${HOLDED_API_BASE}/documents/${tipo}?page=${page}`, { headers: { key: apiKey }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+        if (!res.ok) {
+            const cuerpo = await res.text().catch(() => '');
+            throw new Error(`Holded respondió HTTP ${res.status} al listar /documents/${tipo} sin filtro: ${cuerpo.slice(0, 160)} (antes: ${errores.join(' | ')})`);
+        }
+        const data: any = await res.json().catch(() => null);
+        if (data && !Array.isArray(data)) throw new Error(`Holded no devolvió una lista en /documents/${tipo}: ${JSON.stringify(data).slice(0, 160)}`);
+        if (!Array.isArray(data) || data.length === 0) break;
+        const nuevos = data.filter((d: any) => d?.id && !vistos.has(String(d.id)));
+        if (nuevos.length === 0) break;
+        paginas++;
+        nuevos.forEach((d: any) => vistos.add(String(d.id)));
+        todos.push(...nuevos);
+
+        const fechas = nuevos.map((d: any) => fechaDocumentoMs(d.date) / 1000).filter((n: number) => isFinite(n));
+        if (fechas.length >= 2 && orden === 'desconocido') orden = fechas[0] >= fechas[fechas.length - 1] ? 'desc' : 'asc';
+        const minPagina = Math.min(...fechas);
+        if (orden === 'desc' && isFinite(minPagina) && minPagina < startSec) break; // ya pasamos la fecha pedida
+    }
+    const lista = todos.filter(d => { const t = fechaDocumentoMs(d.date) / 1000; return isFinite(t) && t >= startSec; });
+    return { lista, estrategia: `sin filtro (Holded rechazó starttmp) · ${paginas} páginas · orden ${orden} · ${lista.length} documentos desde la fecha` };
 }
 
 /** Detalle de un documento de venta (cuando el listado no trae las líneas de producto). */
