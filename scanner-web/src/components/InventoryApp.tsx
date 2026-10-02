@@ -173,6 +173,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     const [invLotesAbiertos, setInvLotesAbiertos] = useState<Record<string, boolean>>({}); // desglose de lotes por fila (oculto por defecto)
     const [invSavingId, setInvSavingId] = useState<string | null>(null);
     const [invEditHoldedId, setInvEditHoldedId] = useState<string | null>(null); // producto de Holded que se está editando desde Inventario
+    const [invVentasInfo, setInvVentasInfo] = useState<{ modo: string; documentos: number; borrados: number; errores: number; totalDocs: number; detallesPedidos?: number; pendientes?: number; conLineas?: number; detalle?: string[]; desde?: string } | null>(null);
 
     const cargarInventario = async (forzar = false, reconstruirVentas = false) => {
         if (invLoading) return; // evitar llamadas duplicadas a Holded
@@ -185,6 +186,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
             if (data.success) {
                 setInvRows(data.data);
                 setInvFetchedAt(data.fetchedAt || new Date().toISOString());
+                setInvVentasInfo(data.ventas || null);
                 if (reconstruirVentas) showToast(`Ventas reconstruidas desde Holded: ${data.ventas?.documentos ?? 0} documentos.`, 'success');
                 else if (data.ventas?.borrados > 0) showToast(`Ventas actualizadas: ${data.ventas.borrados} factura(s) borrada(s) en Holded ya no cuentan.`, 'info');
             } else {
@@ -2770,6 +2772,15 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                         <span className="text-[10px] font-bold text-muted uppercase tracking-wider">sin ingresos en la app</span>
                                     </div>
                                 </div>
+
+                                {/* Estado de la sincronización de ventas con Holded */}
+                                {invVentasInfo && (
+                                    <div className={`rounded-2xl border px-4 py-2.5 mb-4 text-[10px] font-bold uppercase tracking-wider ${invVentasInfo.errores > 0 || invVentasInfo.totalDocs === 0 ? 'bg-red-500/10 border-red-500/40 text-red-700' : (invVentasInfo.conLineas ?? 0) === 0 ? 'bg-amber-500/10 border-amber-500/40 text-amber-800' : 'bg-white/60 border-line text-muted'}`}>
+                                        <span className="mr-3">Ventas Holded: {invVentasInfo.totalDocs.toLocaleString('es-CO')} documentos en el índice · {(invVentasInfo.conLineas ?? 0).toLocaleString('es-CO')} con líneas de producto{(invVentasInfo.pendientes ?? 0) > 0 ? ` · ${invVentasInfo.pendientes} pendientes de detalle (se completan en próximas cargas)` : ''} · sync {invVentasInfo.modo}</span>
+                                        {invVentasInfo.totalDocs === 0 && <span className="block mt-1 normal-case tracking-normal">Holded no devolvió facturas ni tickets de venta. Revisa /api/holded/diagnose-sales o pulsa "Resincronizar ventas".</span>}
+                                        {(invVentasInfo.detalle || []).map((d, i) => <span key={i} className="block mt-0.5 normal-case tracking-normal font-mono text-[10px]">{d}</span>)}
+                                    </div>
+                                )}
 
                                 {/* Tabla */}
                                 <div className="glass rounded-3xl overflow-hidden pb-2 mb-12 shrink-0">
