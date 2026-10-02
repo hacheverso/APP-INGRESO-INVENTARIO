@@ -246,8 +246,13 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         }
     };
 
+    // Precio con puntos de miles (1.501.000): se muestra formateado y se guarda como número
+    const formatearMiles = (v: string | number) => {
+        const digitos = String(v ?? '').replace(/\D/g, '');
+        return digitos ? Number(digitos).toLocaleString('es-CO') : '';
+    };
     const guardarPrecio = async (row: InvRow, valor: string) => {
-        const precio = parseFloat(valor);
+        const precio = parseFloat(String(valor).replace(/\D/g, ''));
         if (!isFinite(precio) || precio < 0) { showToast('Precio inválido.', 'error'); return; }
         if (precio === row.precio) return;
         setInvSavingId(row.holdedId);
@@ -2882,15 +2887,15 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                                 <div className="inline-flex items-center gap-1 bg-white/80 border border-line rounded-xl px-3 py-1.5 focus-within:ring-2 focus-within:ring-brand-blue">
                                                                     <span className="text-muted text-xs font-bold">$</span>
                                                                     <input
-                                                                        type="number"
-                                                                        min="0"
+                                                                        type="text"
+                                                                        inputMode="numeric"
                                                                         key={`${r.holdedId}-${r.precio}`}
-                                                                        defaultValue={r.precio}
+                                                                        defaultValue={formatearMiles(r.precio)}
                                                                         disabled={invSavingId === r.holdedId}
+                                                                        onChange={e => { const el = e.target; el.value = formatearMiles(el.value); }}
                                                                         onBlur={e => guardarPrecio(r, e.target.value)}
                                                                         onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                                                        onWheel={e => e.currentTarget.blur()}
-                                                                        className="w-[110px] bg-transparent outline-none text-right font-mono font-black text-ink [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-50"
+                                                                        className="w-[120px] bg-transparent outline-none text-right font-mono font-black text-ink disabled:opacity-50"
                                                                         title="Edita y presiona Enter (o sal del campo) para guardar en Holded"
                                                                     />
                                                                     {invSavingId === r.holdedId && <RefreshCw size={12} className="animate-spin text-brand-blue" />}
