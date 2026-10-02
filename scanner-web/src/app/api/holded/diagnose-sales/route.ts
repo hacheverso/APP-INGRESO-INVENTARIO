@@ -18,7 +18,9 @@ export async function GET(req: Request) {
         if (!authSession) return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
         if (!isHoldedConfigured()) return NextResponse.json({ success: false, error: 'HOLDED_API_KEY no está configurada' }, { status: 500 });
 
-        const dias = Number(new URL(req.url).searchParams.get('dias') || 60);
+        const params = new URL(req.url).searchParams;
+        const dias = Number(params.get('dias') || 60);
+        const q = normalizarClave(params.get('q') || '');
         const userId = authSession.userId;
 
         const [crudo, estado, totalDocs, conLineas, ejemplos, inventario] = await Promise.all([
@@ -39,9 +41,18 @@ export async function GET(req: Request) {
             return { nombre: p.name, sku: p.sku, holdedId: p.id, stock: p.stock, claves, clavesConVentas: claves.filter(k => clavesConVentas.has(k)) };
         });
 
+        // Búsqueda de un producto concreto (?q=ONN 2K): claves del índice y líneas crudas de Holded que lo mencionan
+        const busqueda = q ? {
+            texto: q,
+            clavesEnIndice: Array.from(clavesConVentas).filter(k => normalizarClave(k).includes(q)).slice(0, 20),
+            lineasCrudasHolded: (crudo?.lineasPagina1 || []).filter((l: any) => normalizarClave(`${l.sku || ''} ${l.name || ''}`).includes(q)).slice(0, 20),
+            productosHolded: inventario.filter(p => normalizarClave(`${p.sku} ${p.name}`).includes(q)).map(p => ({ id: p.id, name: p.name, sku: p.sku, stock: p.stock })).slice(0, 10),
+        } : undefined;
+
         return NextResponse.json({
             success: true,
-            leeme: 'Comparte esta página completa (captura o copia) para revisar por qué no cruzan las ventas.',
+            leeme: 'Comparte esta página completa (captura o copia) para revisar por qué no cruzan las ventas. Puedes buscar un producto con ?q=NOMBRE',
+            busqueda,
             holdedCrudo: crudo,
             indiceLocal: { ultimaSincronizacion: estado?.salesSyncedAt, ultimaReconciliacion: estado?.salesReconciledAt, documentosGuardados: totalDocs, documentosConLineas: conLineas, ejemplosRecientes: ejemplos, clavesDistintasConVentas: clavesConVentas.size },
             productosDeMuestra: muestra,

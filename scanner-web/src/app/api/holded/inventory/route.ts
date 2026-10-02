@@ -134,12 +134,13 @@ export async function GET(req: Request) {
         const serialesPorLote = new Map<string, string[]>(); // "upc|lote" → seriales ingresados
         const sesionPorLote = new Map<string, string>();      // "upc|lote" → id de la sesión (para reabrirla y corregirla)
         for (const s of sesiones) {
-            const porProducto = new Map<string, { unidades: number; costoTotalUsd: number; trm: number }>();
+            const porProducto = new Map<string, { unidades: number; costoTotalUsd: number; costoTotalCop: number; trm: number }>();
             for (const r of s.records) {
-                const e = porProducto.get(r.upc) || { unidades: 0, costoTotalUsd: 0, trm: 1 };
+                const e = porProducto.get(r.upc) || { unidades: 0, costoTotalUsd: 0, costoTotalCop: 0, trm: 1 };
                 e.unidades += r.cantidad || 0;
                 e.costoTotalUsd += (r.cantidad || 0) * (r.costoUsd || 0);
-                if (r.trm > 1) e.trm = r.trm;
+                e.costoTotalCop += r.costoCop || 0;
+                if (r.trm > 1) e.trm = Math.max(e.trm, r.trm);
                 porProducto.set(r.upc, e);
                 sesionPorLote.set(`${r.upc}|${s.batchName || s.id}`, s.id);
                 // seriales se guarda como JSON (["SN1"]); tolerar también texto plano separado por comas
@@ -155,12 +156,18 @@ export async function GET(req: Request) {
             for (const [upc, e] of porProducto) {
                 if (e.unidades <= 0) continue;
                 const arr = lotesPorUpc.get(upc) || [];
+                // TRM del lote: la guardada en los registros; si no la hay pero el total en COP es mayor que el
+                // total en USD (ingresos antiguos que guardaron el COP sin la tasa), se deduce de la relación COP/USD.
+                let trm = e.trm;
+                if (!(trm > 1) && e.costoTotalUsd > 0 && e.costoTotalCop > e.costoTotalUsd * 1.5) {
+                    trm = Math.round(e.costoTotalCop / e.costoTotalUsd);
+                }
                 arr.push({
                     lote: s.batchName || s.id,
                     fecha: s.createdAt.toISOString(),
                     unidades: e.unidades,
                     costoUsd: Math.round((e.costoTotalUsd / e.unidades) * 100) / 100,
-                    trm: e.trm,
+                    trm,
                 });
                 lotesPorUpc.set(upc, arr);
             }
