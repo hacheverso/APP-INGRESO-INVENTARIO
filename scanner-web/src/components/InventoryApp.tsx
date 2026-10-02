@@ -223,6 +223,26 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
         setShowNewProductModal(true);
     };
 
+    // Enviar a Holded el costo ponderado en COP de los productos con costo conocido (solo los que cambiaron)
+    const [invEnviandoCostos, setInvEnviandoCostos] = useState(false);
+    const enviarCostosAHolded = async () => {
+        const items = (invRows || []).filter(r => r.costoCop !== null && r.costoCop > 0).map(r => ({ holdedId: r.holdedId, upc: r.upc, costoCop: r.costoCop as number }));
+        if (items.length === 0) { showToast('No hay productos con costo ponderado en COP para enviar.', 'info'); return; }
+        if (!confirm(`Se enviará a Holded el costo ponderado en pesos de hasta ${items.length} productos (solo los que cambiaron desde el último envío).\n\nEsto escribe en la pestaña de costo del producto en Holded. ¿Continuar?`)) return;
+        setInvEnviandoCostos(true);
+        try {
+            const res = await fetch('/api/holded/costs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
+            const data = await res.json();
+            if (!data.success) { showToast(`No se pudieron enviar los costos: ${data.error}`, 'error'); return; }
+            const err = (data.errores || []).length;
+            showToast(`Costos en Holded: ${data.enviados} actualizados · ${data.sinCambios} sin cambios${err ? ` · ${err} con error` : ''}.`, err ? 'error' : 'success');
+        } catch {
+            showToast('Error de conexión al enviar los costos.', 'error');
+        } finally {
+            setInvEnviandoCostos(false);
+        }
+    };
+
     const guardarPrecio = async (row: InvRow, valor: string) => {
         const precio = parseFloat(valor);
         if (!isFinite(precio) || precio < 0) { showToast('Precio inválido.', 'error'); return; }
@@ -2701,6 +2721,14 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                     title="Releer todas las ventas de los últimos 2 años en Holded (por facturas borradas o editadas hace tiempo)"
                                 >
                                     <History size={13} /> Resincronizar ventas
+                                </button>
+                                <button
+                                    onClick={enviarCostosAHolded}
+                                    disabled={invLoading || invEnviandoCostos || !invRows}
+                                    className="flex items-center gap-2 px-4 py-3 glass hover:bg-white rounded-xl text-[10px] font-black uppercase tracking-widest text-muted hover:text-ink transition-colors disabled:opacity-60"
+                                    title="Escribir en Holded el costo ponderado (COP) de cada producto; solo se envían los que cambiaron"
+                                >
+                                    <DollarSign size={13} className={invEnviandoCostos ? 'animate-pulse' : ''} /> {invEnviandoCostos ? 'Enviando costos...' : 'Enviar costos a Holded'}
                                 </button>
                             </div>
                         </div>

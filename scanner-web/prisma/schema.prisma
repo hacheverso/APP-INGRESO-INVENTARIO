@@ -30,6 +30,7 @@ model Product {
   holdedId  String?
   lastCost  Float    @default(0)
   lastCostAt DateTime?
+  holdedCostCop Float? // último costo ponderado (COP) enviado a Holded, para enviar solo cambios
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

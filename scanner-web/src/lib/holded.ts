@@ -327,13 +327,18 @@ export async function muestraVentasCrudas(dias: number): Promise<any> {
     const apiKey = process.env.HOLDED_API_KEY;
     if (!apiKey) return { error: 'HOLDED_API_KEY no está configurada en el servidor' };
     const startSec = Math.floor((Date.now() - dias * 24 * 60 * 60 * 1000) / 1000);
-    const out: any = { desde: new Date(startSec * 1000).toISOString(), tipos: {} };
+    const out: any = { desde: new Date(startSec * 1000).toISOString(), tipos: {}, lineasPagina1: [] as any[] };
     for (const tipo of ['invoice', 'salesreceipt']) {
         try {
             const res = await fetch(`${HOLDED_API_BASE}/documents/${tipo}?starttmp=${startSec}&page=1`, { headers: { key: apiKey }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
             const data: any = await res.json().catch(() => null);
             const lista = Array.isArray(data) ? data : [];
             const primero = lista[0];
+            for (const doc of lista) {
+                for (const line of lineasDeDocumento(doc)) {
+                    out.lineasPagina1.push({ tipo, docId: doc?.id, docNumber: doc?.docNumber, fecha: new Date(fechaDocumentoMs(doc?.date)).toISOString().slice(0, 10), productId: line?.productId ?? line?.product_id ?? null, sku: line?.sku ?? null, name: line?.name ?? null, units: line?.units ?? null });
+                }
+            }
             let detalle: any = null;
             if (primero?.id) {
                 const r2 = await fetch(`${HOLDED_API_BASE}/documents/${tipo}/${primero.id}`, { headers: { key: apiKey }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
@@ -353,6 +358,28 @@ export async function muestraVentasCrudas(dias: number): Promise<any> {
         }
     }
     return out;
+}
+
+/** Actualiza únicamente el costo (precio de compra) de un producto en Holded. */
+export async function updateHoldedCost(holdedId: string, cost: number): Promise<HoldedSyncResult> {
+    const apiKey = process.env.HOLDED_API_KEY;
+    if (!apiKey) return { ok: false, error: 'HOLDED_API_KEY no está configurada en el servidor' };
+    try {
+        const res = await fetch(`${HOLDED_API_BASE}/products/${holdedId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'key': apiKey },
+            body: JSON.stringify({ cost }),
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        const data: any = await res.json().catch(() => null);
+        if (!res.ok || (data && data.status === 0)) {
+            return { ok: false, error: `Holded rechazó el costo: ${data?.info || data?.message || `HTTP ${res.status}`}` };
+        }
+        return { ok: true, holdedId, action: 'updated' };
+    } catch (error: any) {
+        const detail = error?.name === 'TimeoutError' ? 'timeout de conexión' : (error?.message || 'error de red');
+        return { ok: false, error: `No se pudo conectar con Holded: ${detail}` };
+    }
 }
 
 /** Actualiza únicamente el precio de venta de un producto en Holded. */
