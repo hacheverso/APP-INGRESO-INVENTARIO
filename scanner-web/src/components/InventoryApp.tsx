@@ -156,6 +156,7 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
     interface InvRow {
         holdedId: string; upc: string; nombre: string; sku: string; imagen: string; categoria: string;
         stock: number; precio: number; costoUsd: number | null; costoCop: number | null; cubiertas: number;
+        usdParcial?: boolean; copParcial?: boolean; unidadesSinCosto?: number; unidadesSinTrm?: number;
         lotes: { lote: string; fecha: string; tomadas: number; costoUsd: number; trm: number; seriales?: string[]; sessionId?: string | null }[];
         vendidosDesdeLlegada?: number; ventasDesdeLlegada?: number; vendidos90d?: number;
         vinculados?: { upc: string; nombre: string }[];
@@ -2839,13 +2840,29 @@ export default function InventoryScannerApp({ initialView = 'SCANNER' }: { initi
                                                             </td>
                                                             <td className="px-4 py-3 text-right font-tech text-xl text-ink">{r.stock}</td>
                                                             <td className="px-4 py-3 text-right font-mono font-black text-ink whitespace-nowrap">
-                                                                {r.costoUsd !== null ? `USD $${r.costoUsd.toLocaleString('es-CO')}` : <span className="text-faint">—</span>}
+                                                                {r.costoUsd !== null ? (
+                                                                    <span className="inline-flex items-center gap-1 justify-end">
+                                                                        {r.usdParcial && <AlertTriangle size={12} className="text-amber-600" />}
+                                                                        USD ${r.costoUsd.toLocaleString('es-CO')}
+                                                                    </span>
+                                                                ) : <span className="text-faint" title={(r.unidadesSinCosto || 0) > 0 ? 'Todos los lotes en stock entraron sin costo: revisar' : 'Sin ingresos en la app'}>—</span>}
                                                                 {r.costoUsd !== null && r.cubiertas < r.stock && (
                                                                     <span className="block text-[9px] font-bold uppercase tracking-wider text-amber-700" title="Hay más unidades en stock que las ingresadas por la app; el costo se calcula sobre las que sí tienen historial">sobre {r.cubiertas} de {r.stock} und</span>
                                                                 )}
+                                                                {r.usdParcial && (
+                                                                    <span className="block text-[9px] font-bold uppercase tracking-wider text-amber-700" title={`${r.unidadesSinCosto} unidad(es) vienen de lotes ingresados SIN costo; el promedio se calculó con las demás. Despliega los lotes y corrige el que está en ámbar.`}>revisar: {r.unidadesSinCosto} und sin costo</span>
+                                                                )}
                                                             </td>
                                                             <td className="px-4 py-3 text-right font-mono font-black text-brand-green-ink whitespace-nowrap">
-                                                                {r.costoCop !== null ? formatMoney(r.costoCop, 'COP') : <span className="text-faint" title="Algún lote entró en USD sin TRM">—</span>}
+                                                                {r.costoCop !== null ? (
+                                                                    <span className="inline-flex items-center gap-1 justify-end">
+                                                                        {r.copParcial && <AlertTriangle size={12} className="text-amber-600" />}
+                                                                        {formatMoney(r.costoCop, 'COP')}
+                                                                    </span>
+                                                                ) : <span className="text-faint" title={(r.unidadesSinTrm || 0) > 0 ? 'Ningún lote en stock tiene TRM: revisar los lotes en ámbar' : 'Sin costo conocido'}>—</span>}
+                                                                {r.copParcial && (
+                                                                    <span className="block text-[9px] font-bold uppercase tracking-wider text-amber-700" title={`${r.unidadesSinTrm} unidad(es) vienen de lotes SIN TRM; el costo en pesos se calculó con las demás. Despliega los lotes y corrige el que está en ámbar.`}>revisar: {r.unidadesSinTrm} und sin TRM</span>
+                                                                )}
                                                             </td>
                                                             <td className="px-4 py-3 text-center">
                                                                 {r.lotes.length === 0 ? (

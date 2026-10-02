@@ -262,6 +262,10 @@ export async function GET(req: Request) {
                 costoUsd: costo.costoUsd,
                 costoCop: costo.costoCop,
                 cubiertas: costo.cubiertas,
+                usdParcial: costo.usdParcial,
+                copParcial: costo.copParcial,
+                unidadesSinCosto: costo.unidadesSinCosto,
+                unidadesSinTrm: costo.unidadesSinTrm,
                 lotes: costo.lotesUsados.map(l => ({ ...l, seriales: serialesPorLote.get(`${upc}|${l.lote}`) || [], sessionId: sesionPorLote.get(`${upc}|${l.lote}`) || null })),
                 ultimoLote: lotes[0] ? { lote: lotes[0].lote, fecha: lotes[0].fecha, costoUsd: lotes[0].costoUsd } : null,
             };
